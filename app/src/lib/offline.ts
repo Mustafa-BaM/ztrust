@@ -8,7 +8,7 @@ const catalogStore = createStore('zt-catalog', 'kv')
 const outboxStore = createStore('zt-outbox', 'sales')
 
 export interface CatalogStation { id: string; name: string; is_default: boolean; sort: number }
-export interface Catalog { items: Item[]; categories: Category[]; customers: Customer[]; stations?: number; stationList?: CatalogStation[]; savedAt: string }
+export interface Catalog { items: Item[]; categories: Category[]; customers: Customer[]; stations?: number; stationList?: CatalogStation[]; channels?: { id: string; display_name: string; platform: string }[]; savedAt: string }
 
 export async function saveCatalog(tenantId: string, c: Omit<Catalog, 'savedAt'>) {
   await set(tenantId, { ...c, savedAt: new Date().toISOString() }, catalogStore)

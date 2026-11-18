@@ -2,14 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useT } from '../lib/i18n'
 import { parseError } from '../lib/supabase'
 
-/** The Z Trust mark: one stroke that reads as Latin "Z" and Arabic "ز" (the curve is the ر, the amber dot makes it zay). */
+/** The Z Trust mark: a Z crossed by a bar, like a currency sign (€, ₦, the new riyal sign): commerce you can trust. */
 export function Logo({ size = 32, tile = false }: { size?: number; tile?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 120 120" role="img" aria-label="Z Trust" className={`logo ${tile ? "logo-tiled" : ""}`}>
-      {tile && <rect x="4" y="4" width="112" height="112" rx="30" className="logo-tile" />}
-      <path d="M28 40 H82 C 91 40, 92 48, 87 55 C 75 72, 56 82, 32 86 H92" fill="none" className="logo-stroke"
-            strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="76" cy="22" r="7.5" fill="var(--amber)" />
+    <svg width={size} height={size} viewBox="0 0 120 120" role="img" aria-label="Z Trust" className={`logo ${tile ? 'logo-tiled' : ''}`}>
+      {tile && <rect width="120" height="120" rx="28" className="logo-tile" />}
+      <path d="M32 32 H88 L32 88 H88" fill="none" className="logo-stroke" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M34 60 H86" stroke="var(--amber)" strokeWidth="9" strokeLinecap="round" />
     </svg>
   )
 }

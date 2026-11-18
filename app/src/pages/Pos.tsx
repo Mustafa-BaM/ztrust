@@ -55,13 +55,14 @@ export default function Pos() {
     void loadCatalog(tenant.id).then((c) => { if (live && c) setCatalog(c) })
     if (online) {
       void Promise.all([
-        supabase.from('items').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name').limit(5000),
+        supabase.from('items').select('*').eq('tenant_id', tenant.id).eq('is_active', true).neq('item_type', 'ingredient').order('name').limit(5000),
         supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('sort'),
         supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name').limit(2000),
         s.branch ? supabase.from('kitchen_stations').select('id, name, is_default, sort').eq('branch_id', s.branch.id).eq('is_active', true) : Promise.resolve({ data: [] }),
-      ]).then(([i, c, cu, ks]) => {
+        s.branch ? supabase.from('delivery_channels').select('id, display_name, platform').eq('branch_id', s.branch.id).eq('is_active', true) : Promise.resolve({ data: [] }),
+      ]).then(([i, c, cu, ks, dc]) => {
         if (i.error || !live) return
-        const next = { items: (i.data ?? []) as Item[], categories: c.data ?? [], customers: (cu.data ?? []) as Customer[], stations: (ks.data ?? []).length, stationList: (ks.data ?? []) as Catalog['stationList'] }
+        const next = { items: (i.data ?? []) as Item[], categories: c.data ?? [], customers: (cu.data ?? []) as Customer[], stations: (ks.data ?? []).length, stationList: (ks.data ?? []) as Catalog['stationList'], channels: (dc.data ?? []) as Catalog['channels'] }
         setCatalog({ ...next, savedAt: new Date().toISOString() })
         void saveCatalog(tenant.id, next)
       })
@@ -106,6 +107,7 @@ export default function Pos() {
   const clear = () => { setLines([]); setCustomer(null); setSel(0); setTable('') }
   const hasKitchen = (catalog?.stations ?? 0) > 0
   const hub = useHub()
+  const showImages = Boolean(tenant.settings?.pos_show_images)
 
   // ---- keyboard mode shortcuts
   useEffect(() => {
@@ -139,8 +141,10 @@ export default function Pos() {
       tenant_id: tenant.id, branch_id: s.branch!.id, shift_id: shiftId, client_id: uuid(), customer_id: customer?.id ?? null,
       device_created_at: new Date().toISOString(), approver_pin: pin ?? null,
       lines: lines.map((l) => ({ item_id: l.item_id, name: l.name, qty: l.qty, unit_price: l.unit_price, discount: l.discount, note: l.note ?? null })),
-      kitchen: hasKitchen ? { order_type: orderType, table_no: orderType === 'dine_in' ? table : null, hub: hubConnected() } : null,
+      kitchen: hasKitchen ? { order_type: tenders.some((x) => x.tender === 'platform') ? 'delivery' : orderType, table_no: orderType === 'dine_in' ? table : null, hub: hubConnected() } : null,
       payments: tenders.map((x) => ({ tender: x.tender, amount: x.amount, reference: x.reference ?? null })),
+      channel_id: tenders.find((x) => x.tender === 'platform')?.channel_id ?? null,
+      external_ref: tenders.find((x) => x.tender === 'platform')?.reference ?? null,
     }
   }
 
@@ -224,7 +228,7 @@ export default function Pos() {
 
   const line = lines[sel]
   return (
-    <div className={`pos ${mode}`}>
+    <div className={`pos ${mode} ${showImages ? 'with-images' : ''}`}>
       <section className="pos-left">
         <div className="pos-search">
           <label className="search-box">
@@ -253,7 +257,9 @@ export default function Pos() {
               const label = nameOf(i)
               return (
                 <button key={i.id} className={`tile ${inCart ? 'in' : ''}`} onClick={() => add(i)} style={{ ['--cat' as string]: idx >= 0 ? `var(--c${(idx % 8) + 1})` : 'var(--muted)' }}>
-                  <span className="tile-mono" aria-hidden="true">{label.trim().charAt(0)}</span>
+                  {showImages && i.image_url
+                    ? <img className="tile-img" src={i.image_url} alt="" loading="lazy" />
+                    : <span className="tile-mono" aria-hidden="true">{label.trim().charAt(0)}</span>}
                   <span className="tile-name">{label}</span>
                   <span className="tile-price">{num(i.price, d)}</span>
                   {inCart > 0 && <span className="tile-qty" aria-label={t('In cart')}>{inCart}</span>}
@@ -344,7 +350,7 @@ export default function Pos() {
       </section>
 
       {dialog === 'pay' && (
-        <PayDialog total={totals.total} tenant={tenant} customer={customer} online={online}
+        <PayDialog total={totals.total} tenant={tenant} customer={customer} online={online} channels={catalog?.channels ?? []}
                    onClose={() => setDialog(null)} onConfirm={(tn, ch) => void finish(tn, ch)} onPickCustomer={() => setDialog('customer')} />
       )}
       {dialog === 'customer' && catalog && (

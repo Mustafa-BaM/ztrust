@@ -20,8 +20,8 @@ function quickCash(due: number, decimals: number): number[] {
  * Split payment: any number of tenders until the remaining amount is zero.
  * Cash may be over-tendered; the difference is change. On account, payment link and store credit need a customer.
  */
-export function PayDialog({ total, tenant, customer, online, onClose, onConfirm, onPickCustomer }: {
-  total: number; tenant: Tenant; customer: Customer | null; online: boolean
+export function PayDialog({ total, tenant, customer, online, channels = [], onClose, onConfirm, onPickCustomer }: {
+  total: number; tenant: Tenant; customer: Customer | null; online: boolean; channels?: { id: string; display_name: string }[]
   onClose: () => void; onConfirm: (t: TenderEntry[], change: number) => void; onPickCustomer: () => void
 }) {
   const { t, lang } = useT()
@@ -33,6 +33,7 @@ export function PayDialog({ total, tenant, customer, online, onClose, onConfirm,
   const remaining = total - paid
   const [amount, setAmount] = useState(num(total, d))
   const [ref, setRef] = useState('')
+  const [channel, setChannel] = useState(channels[0]?.id ?? '')
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setAmount(num(Math.max(remaining, 0), d)); input.current?.select() }, [remaining, d])
@@ -53,7 +54,8 @@ export function PayDialog({ total, tenant, customer, online, onClose, onConfirm,
       setChange(v - remaining)
       setEntries([...entries, { tender: 'cash', amount: remaining }])
     } else {
-      setEntries([...entries, { tender, amount: Math.min(v, remaining), reference: ref || undefined }])
+      if (tender === 'platform' && !channel) return
+      setEntries([...entries, { tender, amount: Math.min(v, remaining), reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined }])
     }
     setRef('')
   }
@@ -68,7 +70,7 @@ export function PayDialog({ total, tenant, customer, online, onClose, onConfirm,
         </div>
 
         <div className="tender-row" role="radiogroup" aria-label={t('Payment method')}>
-          {TENDERS.map((x) => (
+          {[...TENDERS, ...(channels.length ? (['platform'] as Tender[]) : [])].map((x) => (
             <button key={x} role="radio" aria-checked={tender === x} className={`tender ${tender === x ? 'on' : ''}`}
                     disabled={disabled(x)} onClick={() => setTender(x)} title={disabled(x) ? (x === 'payment_link' && !online ? t('Needs internet') : t('Choose a customer first')) : ''}>
               {tenderLabel(x, lang)}
@@ -81,6 +83,13 @@ export function PayDialog({ total, tenant, customer, online, onClose, onConfirm,
           <form className="pay-entry" onSubmit={(e) => { e.preventDefault(); add() }}>
             <label className="field"><span>{tender === 'cash' ? t('Cash received') : t('Amount')}</span>
               <input id="pay-amount" ref={input} inputMode="decimal" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+            {tender === 'platform' && (
+              <label className="field"><span>{t('Platform')}</span>
+                <select id="pay-channel" value={channel} onChange={(e) => setChannel(e.target.value)}>{channels.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label>
+            )}
+            {tender === 'platform' && (
+              <label className="field"><span>{t('Platform order number')}</span><input id="pay-ext" value={ref} onChange={(e) => setRef(e.target.value)} /></label>
+            )}
             {(tender === 'card' || tender === 'bank_transfer') && (
               <label className="field"><span>{t('Reference (approval code)')}</span><input id="pay-ref" value={ref} onChange={(e) => setRef(e.target.value)} /></label>
             )}
@@ -94,7 +103,7 @@ export function PayDialog({ total, tenant, customer, online, onClose, onConfirm,
         {entries.length > 0 && (
           <ul className="entries">
             {entries.map((e, i) => (
-              <li key={i}><span>{tenderLabel(e.tender, lang)}{e.reference ? ` · ${e.reference}` : ''}</span><b>{fmt(e.amount, tenant, lang)}</b>
+              <li key={i}><span>{e.tender === 'platform' ? channels.find((c) => c.id === e.channel_id)?.display_name : tenderLabel(e.tender, lang)}{e.reference ? ` · ${e.reference}` : ''}</span><b>{fmt(e.amount, tenant, lang)}</b>
                 <button className="icon" aria-label={t('Remove')} onClick={() => { setEntries(entries.filter((_, j) => j !== i)); if (e.tender === 'cash') setChange(0) }}>✕</button></li>
             ))}
           </ul>

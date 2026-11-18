@@ -40,12 +40,12 @@ log('business created (Kuwait, KWD 3 decimals)')
 // products
 await page.getByRole('link', { name: 'Products' }).click()
 for (const [n, ar, price, cost, bc] of [['Latte', 'لاتيه', '1.500', '0.400', '111'], ['Croissant', 'كرواسون', '0.900', '0.300', '222'], ['Spanish Latte', 'سبانش لاتيه', '1.750', '0.450', '333']]) {
-  await page.getByRole('button', { name: 'Add product' }).click()
+  await page.getByRole('button', { name: 'Add item' }).click()
   await page.fill('#item-name', n); await page.fill('#item-name-ar', ar); await page.fill('#item-price', price)
   await page.fill('#item-cost', cost); await page.fill('#item-barcode', bc); await page.fill('#item-newcat', n === 'Croissant' ? 'Bakery' : '')
   if (n === 'Latte') await page.fill('#item-newcat', 'Coffee')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('cell', { name: n, exact: true }).waitFor()
+  await page.locator('tbody td', { hasText: new RegExp('^' + n) }).first().waitFor()
 }
 log('3 products added')
 

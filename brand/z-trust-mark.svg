@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="512" height="512">
   <title>Z Trust</title>
-  <rect x="4" y="4" width="112" height="112" rx="30" fill="#0E1626"/>
-  <path d="M28 40 H82 C 91 40, 92 48, 87 55 C 75 72, 56 82, 32 86 H92" fill="none" stroke="#F3F5F9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="76" cy="22" r="7.5" fill="#F2B53A"/>
+  <rect width="120" height="120" rx="28" fill="#2346D8"/>
+  <path d="M32 32 H88 L32 88 H88" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 60 H86" stroke="#F2B53A" stroke-width="9" stroke-linecap="round"/>
 </svg>

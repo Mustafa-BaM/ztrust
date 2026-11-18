@@ -1,7 +1,7 @@
 /** Role package key (system templates or custom packages created by the owner). */
 export type Role = string
 export type BusinessType = 'retail' | 'food' | 'services' | 'mixed'
-export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'other'
+export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'platform' | 'other'
 
 export interface Country {
   code: string; name_en: string; name_ar: string; currency: string; currency_decimals: number
@@ -12,6 +12,13 @@ export interface Tenant {
   id: string; name: string; name_ar: string | null; country_code: string; currency: string; currency_decimals: number
   default_language: string; business_type: BusinessType; tax_number: string | null; vat_rate: number
   prices_include_tax: boolean; brand_color: string | null; logo_url: string | null; plan: string; trial_ends_at: string
+  settings?: TenantSettings
+}
+
+export interface TenantSettings {
+  pos_show_images?: boolean
+  receipt_phones?: string; receipt_address?: string; receipt_cr?: string; receipt_website?: string
+  receipt_header?: string; receipt_footer?: string; receipt_terms?: string
 }
 
 export interface Membership {
@@ -25,7 +32,7 @@ export interface Category { id: string; tenant_id: string; name: string; name_ar
 export interface Item {
   id: string; tenant_id: string; category_id: string | null; name: string; name_ar: string | null; sku: string | null
   barcode: string | null; price: number; cost: number; tax_rate: number | null; track_stock: boolean; is_active: boolean
-  image_url: string | null
+  image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe'; unit?: string; reorder_point?: number | null
 }
 
 export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number }
@@ -50,7 +57,7 @@ export interface CartLine {
   key: string; item_id: string | null; name: string; name_ar: string | null; qty: number; unit_price: number
   list_price: number; discount: number; tax_rate: number; note?: string
 }
-export interface TenderEntry { tender: Tender; amount: number; reference?: string }
+export interface TenderEntry { tender: Tender; amount: number; reference?: string; channel_id?: string }
 
 export interface RolePkg { tenant_id: string; key: string; name_en: string; name_ar: string; description_en: string | null; description_ar: string | null; template: string | null; is_system: boolean; sort: number }
 export interface PermDef { key: string; module: string; name_en: string; name_ar: string; limit_kind: 'pct' | 'money' | null; sort: number }
@@ -70,3 +77,5 @@ export interface PurchaseOrder {
   created_by: string; approved_by: string | null; approved_at: string | null; created_at: string; cancelled_reason: string | null
   purchase_order_lines?: PoLine[]; suppliers?: { name: string } | null
 }
+
+export interface DeliveryChannel { id: string; tenant_id: string; branch_id: string; platform: string; display_name: string; store_ref: string | null; is_active: boolean; auto_accept: boolean; prep_minutes: number; commission_pct: number; webhook_token_hash: string | null }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="512" height="512">
+  <title>Z Trust (one colour, for receipts and stamps)</title>
+  <path d="M32 32 H88 L32 88 H88" fill="none" stroke="#000" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 60 H86" stroke="#000" stroke-width="9" stroke-linecap="round"/>
+</svg>

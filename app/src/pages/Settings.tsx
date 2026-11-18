@@ -3,7 +3,9 @@ import { Modal } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { rpc, supabase } from '../lib/supabase'
-import type { Category, Membership, PermDef, RolePkg, RoleTemplate, Station } from '../lib/types'
+import type { Category, DeliveryChannel, Membership, PermDef, RolePkg, RoleTemplate, Station } from '../lib/types'
+import { Receipt, type ReceiptData } from '../components/Receipt'
+import { num, toMinor } from '../lib/money'
 import { WIDGETS, layoutFor } from './Dashboard'
 import { configureHub, detectHub, hubSettings, useHub } from '../lib/hub'
 
@@ -21,7 +23,8 @@ export default function Settings() {
     { id: 'staff' as const, label: 'Staff', show: s.can('staff.manage') },
     { id: 'dash' as const, label: 'Dashboards', show: owner },
     { id: 'kitchen' as const, label: 'Kitchen stations', show: s.can('settings.manage') },
-    { id: 'business' as const, label: 'Business', show: s.can('settings.manage') },
+    { id: 'business' as const, label: 'Business and receipt', show: s.can('settings.manage') },
+    { id: 'delivery' as const, label: 'Delivery platforms', show: s.can('settings.manage') },
     { id: 'device' as const, label: 'This device', show: true },
   ].filter((x) => x.show)
   const [tab, setTab] = useState(tabs[0].id)
@@ -34,6 +37,7 @@ export default function Settings() {
       {tab === 'dash' && <Dashboards />}
       {tab === 'kitchen' && <Kitchen />}
       {tab === 'business' && <Business />}
+      {tab === 'delivery' && <Delivery />}
       {tab === 'device' && <Device />}
     </div>
   )
@@ -382,21 +386,142 @@ function Business() {
   const { t } = useT()
   const s = useSession()
   const tn = s.tenant!
+  const st = tn.settings ?? {}
   const [f, setF] = useState({ name: tn.name, name_ar: tn.name_ar ?? '', tax_number: tn.tax_number ?? '', brand_color: tn.brand_color ?? '#2346D8' })
+  const [r, setR] = useState({
+    pos_show_images: Boolean(st.pos_show_images), receipt_address: st.receipt_address ?? '', receipt_phones: st.receipt_phones ?? '',
+    receipt_cr: st.receipt_cr ?? '', receipt_website: st.receipt_website ?? '', receipt_header: st.receipt_header ?? '',
+    receipt_terms: st.receipt_terms ?? '', receipt_footer: st.receipt_footer ?? '',
+  })
   const [msg, setMsg] = useState<string | null>(null)
   async function save() {
-    const { error } = await supabase.from('tenants').update({ name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, brand_color: f.brand_color }).eq('id', tn.id)
+    const { error } = await supabase.from('tenants').update({ name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, brand_color: f.brand_color,
+      settings: { ...st, ...r } }).eq('id', tn.id)
     setMsg(error ? error.message : t('Saved')); if (!error) await s.reload()
   }
+  const preview: ReceiptData = { number: 'B01-INV-000123', doc_type: 'invoice', created_at: new Date().toISOString(), lines: [{ name: 'Spanish Latte', qty: 2, line_total: 3500 }],
+    subtotal: 3500, tax_total: 0, total: 3500, discount_total: 0, payments: [{ tender: 'cash', amount: 3500 }] }
   return (
-    <section className="card grid2">
-      <label className="field"><span>{t('Business name (English)')}</span><input id="b-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-      <label className="field"><span>{t('Business name (Arabic)')}</span><input id="b-name-ar" dir="rtl" value={f.name_ar} onChange={(e) => setF({ ...f, name_ar: e.target.value })} /></label>
-      <label className="field"><span>{t('VAT / tax number (optional)')}</span><input id="b-tax" value={f.tax_number} onChange={(e) => setF({ ...f, tax_number: e.target.value })} /></label>
-      <label className="field"><span>{t('Brand colour')}</span><input id="b-color" type="color" value={f.brand_color} onChange={(e) => setF({ ...f, brand_color: e.target.value })} /></label>
-      <p className="muted span2">{t('Country')}: {tn.country_code} · {tn.currency} · {t('VAT')} {tn.vat_rate}% · {tn.prices_include_tax ? t('Prices include VAT') : t('VAT added at checkout')}</p>
-      <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
+    <section className="stack">
+      <div className="card grid2">
+        <h2 className="span2">{t('Business')}</h2>
+        <label className="field"><span>{t('Business name (English)')}</span><input id="b-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+        <label className="field"><span>{t('Business name (Arabic)')}</span><input id="b-name-ar" dir="rtl" value={f.name_ar} onChange={(e) => setF({ ...f, name_ar: e.target.value })} /></label>
+        <label className="field"><span>{t('VAT / tax number (optional)')}</span><input id="b-tax" value={f.tax_number} onChange={(e) => setF({ ...f, tax_number: e.target.value })} /></label>
+        <label className="field"><span>{t('Brand colour')}</span><input id="b-color" type="color" value={f.brand_color} onChange={(e) => setF({ ...f, brand_color: e.target.value })} /></label>
+        <label className="check span2"><input id="b-images" type="checkbox" checked={r.pos_show_images} onChange={(e) => setR({ ...r, pos_show_images: e.target.checked })} />{t('Show product photos on the POS (items without a photo show their initial)')}</label>
+        <p className="muted span2">{t('Country')}: {tn.country_code} · {tn.currency} · {t('VAT')} {tn.vat_rate}% · {tn.prices_include_tax ? t('Prices include VAT') : t('VAT added at checkout')}</p>
+      </div>
+      <div className="receipt-settings">
+        <div className="card grid2">
+          <h2 className="span2">{t('Receipt and invoice')}</h2>
+          <label className="field"><span>{t('Phone numbers')}</span><input id="r-phones" value={r.receipt_phones} onChange={(e) => setR({ ...r, receipt_phones: e.target.value })} placeholder="+965 2222 0000 · WhatsApp 5555 0000" /></label>
+          <label className="field"><span>{t('Commercial registration (CR)')}</span><input id="r-cr" value={r.receipt_cr} onChange={(e) => setR({ ...r, receipt_cr: e.target.value })} /></label>
+          <label className="field span2"><span>{t('Address')}</span><textarea id="r-address" rows={2} value={r.receipt_address} onChange={(e) => setR({ ...r, receipt_address: e.target.value })} /></label>
+          <label className="field"><span>{t('Website / Instagram')}</span><input id="r-web" value={r.receipt_website} onChange={(e) => setR({ ...r, receipt_website: e.target.value })} placeholder="@yourshop" /></label>
+          <label className="field"><span>{t('Extra header line')}</span><input id="r-header" value={r.receipt_header} onChange={(e) => setR({ ...r, receipt_header: e.target.value })} placeholder={t('e.g. Open daily 7 am – 1 am')} /></label>
+          <label className="field span2"><span>{t('Terms and conditions (printed at the bottom)')}</span><textarea id="r-terms" rows={4} value={r.receipt_terms} onChange={(e) => setR({ ...r, receipt_terms: e.target.value })}
+            placeholder={t('e.g. Exchange within 7 days with the receipt. No refund on food items.')} /></label>
+          <label className="field span2"><span>{t('Closing message')}</span><input id="r-footer" value={r.receipt_footer} onChange={(e) => setR({ ...r, receipt_footer: e.target.value })} placeholder="شكراً لزيارتكم · Thank you" /></label>
+          <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
+        </div>
+        <div className="card receipt-live"><h2>{t('Preview')}</h2><div className="receipt-preview"><Receipt data={preview} tenant={{ ...tn, name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, settings: { ...st, ...r } }} branch={s.branch} /></div></div>
+      </div>
     </section>
+  )
+}
+
+/** Delivery platforms: orders arrive by webhook (via the platform or an integration partner) or are keyed at the POS. */
+function Delivery() {
+  const { t } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const d = tn.currency_decimals
+  const [rows, setRows] = useState<DeliveryChannel[]>([])
+  const [f, setF] = useState({ platform: 'keeta', display_name: 'Keeta', commission_pct: '18', store_ref: '' })
+  const [token, setToken] = useState<{ id: string; token: string } | null>(null)
+  const [settle, setSettle] = useState<DeliveryChannel | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('delivery_channels').select('*').eq('branch_id', s.branch!.id).order('display_name'); setRows((data ?? []) as DeliveryChannel[])
+  }, [s.branch])
+  useEffect(() => { void load() }, [load])
+  async function add(e: React.FormEvent) {
+    e.preventDefault(); setMsg(null)
+    const r = await supabase.from('delivery_channels').insert({ tenant_id: tn.id, branch_id: s.branch!.id, platform: f.platform, display_name: f.display_name.trim(),
+      commission_pct: Number(f.commission_pct) || 0, store_ref: f.store_ref.trim() || null })
+    setMsg(r.error ? r.error.message : null); await load()
+  }
+  const upd = async (id: string, patch: Partial<DeliveryChannel>) => { const r = await supabase.from('delivery_channels').update(patch).eq('id', id); setMsg(r.error?.message ?? null); await load() }
+  const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delivery-webhook`
+  return (
+    <section className="stack">
+      <div className="card">
+        <h2>{t('Delivery platforms')}</h2>
+        <p className="muted small">{t('Each platform gets its own receivable: orders post to it, and the platform payout clears it with the commission booked as an expense. Orders can arrive automatically by webhook or be keyed at the POS with the platform as the payment method.')}</p>
+        {rows.length > 0 && (
+          <div className="table-wrap"><table className="list">
+            <thead><tr><th>{t('Platform')}</th><th>{t('Store ID on platform')}</th><th className="num">{t('Commission %')}</th><th className="num">{t('Prep minutes')}</th><th>{t('Webhook')}</th><th>{t('Active')}</th><th /></tr></thead>
+            <tbody>{rows.map((c) => (
+              <tr key={c.id}><td><span className={`plat plat-${c.platform}`}>{c.display_name}</span></td>
+                <td><input id={`dc-ref-${c.id}`} className="ip-in" defaultValue={c.store_ref ?? ''} onBlur={(e) => e.target.value !== (c.store_ref ?? '') && void upd(c.id, { store_ref: e.target.value || null })} /></td>
+                <td className="num"><input id={`dc-com-${c.id}`} className="lim" inputMode="decimal" defaultValue={c.commission_pct} onBlur={(e) => void upd(c.id, { commission_pct: Number(e.target.value) || 0 })} /></td>
+                <td className="num"><input id={`dc-prep-${c.id}`} className="lim" inputMode="numeric" defaultValue={c.prep_minutes} onBlur={(e) => void upd(c.id, { prep_minutes: Number(e.target.value) || 15 })} /></td>
+                <td>{c.webhook_token_hash ? <span className="pill">{t('Connected')}</span> : <span className="pill warn">{t('Manual entry')}</span>}
+                  <button className="ghost small" onClick={async () => setToken({ id: c.id, token: await rpc<string>('rotate_channel_token', { p_channel: c.id }) })}>{c.webhook_token_hash ? t('New token') : t('Connect webhook')}</button></td>
+                <td><input id={`dc-act-${c.id}`} type="checkbox" checked={c.is_active} onChange={(e) => void upd(c.id, { is_active: e.target.checked })} /></td>
+                <td>{s.can('payments.receive') && <button className="small" onClick={() => setSettle(c)}>{t('Record payout')}</button>}</td></tr>))}</tbody>
+          </table></div>)}
+        {token && (
+          <div className="amber-note stack">
+            <b>{t('Copy this token now. It is shown only once.')}</b>
+            <span className="small">{t('Webhook URL')}</span><code className="token">{endpoint}?platform={rows.find((x) => x.id === token.id)?.platform}</code>
+            <span className="small">{t('Header')}: <code>x-channel-token</code></span><code className="token">{token.token}</code>
+            <span className="small">{t('Give both to the platform (or your integration partner). New orders then appear on the POS sales list and the kitchen screen automatically.')}</span>
+          </div>)}
+        <form className="row wrap" onSubmit={add}>
+          <select id="dc-platform" value={f.platform} onChange={(e) => { const p = PLATFORMS.find((x) => x.id === e.target.value)!; setF({ ...f, platform: p.id, display_name: p.name }) }}>
+            {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <input id="dc-name" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
+          <input id="dc-commission" className="lim" inputMode="decimal" value={f.commission_pct} onChange={(e) => setF({ ...f, commission_pct: e.target.value })} aria-label={t('Commission %')} />
+          <button className="primary">{t('Add platform')}</button>
+        </form>
+        {msg && <p className="error">{msg}</p>}
+      </div>
+      {settle && <SettleForm channel={settle} decimals={d} onClose={() => setSettle(null)} />}
+    </section>
+  )
+}
+
+const PLATFORMS = [
+  { id: 'keeta', name: 'Keeta' }, { id: 'talabat', name: 'Talabat' }, { id: 'jahez', name: 'Jahez' }, { id: 'hungerstation', name: 'HungerStation' },
+  { id: 'deliveroo', name: 'Deliveroo' }, { id: 'careem', name: 'Careem' }, { id: 'noon_food', name: 'Noon Food' }, { id: 'mrsool', name: 'Mrsool' },
+  { id: 'toyou', name: 'ToYou' }, { id: 'other', name: 'Other' },
+]
+
+function SettleForm({ channel, decimals, onClose }: { channel: DeliveryChannel; decimals: number; onClose: () => void }) {
+  const { t } = useT()
+  const [f, setF] = useState({ gross: '', commission: '', reference: '' })
+  const [err, setErr] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+  const g = toMinor(f.gross || '0', decimals), c = f.commission ? toMinor(f.commission, decimals) : Math.round(g * Number(channel.commission_pct) / 100)
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setErr(null)
+    try { await rpc('record_platform_settlement', { p: { channel_id: channel.id, gross: g, commission: c, reference: f.reference } }); setDone(true) } catch (x) { setErr((x as Error).message) }
+  }
+  return (
+    <Modal title={`${t('Record payout')} · ${channel.display_name}`} onClose={onClose}>
+      {done ? <div className="stack"><p className="success">{t('Payout recorded: bank, commission and platform receivable posted to the ledger.')}</p><button className="primary" onClick={onClose}>{t('Close')}</button></div> : (
+        <form className="stack" onSubmit={save}>
+          <label className="field"><span>{t('Gross sales in the statement')}</span><input id="st-gross" inputMode="decimal" required value={f.gross} onChange={(e) => setF({ ...f, gross: e.target.value })} /></label>
+          <label className="field"><span>{t('Commission and fees')} ({channel.commission_pct}% = {num(Math.round(g * Number(channel.commission_pct) / 100), decimals)})</span>
+            <input id="st-comm" inputMode="decimal" value={f.commission} placeholder={num(Math.round(g * Number(channel.commission_pct) / 100), decimals)} onChange={(e) => setF({ ...f, commission: e.target.value })} /></label>
+          <p className="muted">{t('Net to bank')}: <b>{num(g - c, decimals)}</b></p>
+          <label className="field"><span>{t('Statement / transfer reference')}</span><input id="st-ref" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} /></label>
+          {err && <p className="error">{err}</p>}
+          <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary" disabled={!g}>{t('Save')}</button></div>
+        </form>)}
+    </Modal>
   )
 }
 

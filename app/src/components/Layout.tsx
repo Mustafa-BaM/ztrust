@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenCheck, ChefHat, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpenCheck, Boxes, ChefHat, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { configureHub, hubSettings, useHub } from '../lib/hub'
@@ -9,7 +9,7 @@ import { Logo } from './ui'
 
 const TITLES: Record<string, string> = {
   '/pos': 'Sell', '/dashboard': 'Dashboard', '/sales': 'Sales', '/kds': 'Kitchen', '/shift': 'Shift', '/products': 'Products',
-  '/purchasing': 'Purchasing', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
+  '/purchasing': 'Purchasing', '/inventory': 'Inventory', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
 }
 
 /** Dark icon rail + slim top bar: the POS keeps almost the whole screen. */
@@ -32,6 +32,7 @@ export default function Layout() {
     { to: '/kds', label: 'Kitchen', icon: ChefHat, show: s.can('kds.view') },
     { to: '/shift', label: 'Shift', icon: Clock3, show: s.can('sale.create') },
     { to: '/products', label: 'Products', icon: Package, show: any('catalog.manage', 'inventory.view', 'sale.create') },
+    { to: '/inventory', label: 'Inventory', icon: Boxes, show: any('inventory.view', 'inventory.adjust', 'catalog.manage') },
     { to: '/purchasing', label: 'Purchasing', icon: Truck, show: any('suppliers.manage', 'purchase.create', 'purchase.approve', 'inventory.receive') },
     { to: '/customers', label: 'Customers', icon: Users, show: any('sale.create', 'customers.manage') },
     { to: '/accounting', label: 'Accounting', icon: BookOpenCheck, show: any('finance.view', 'finance.journal', 'expenses.create', 'payables.pay') },

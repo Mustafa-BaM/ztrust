@@ -21,12 +21,13 @@ export const WIDGETS: { id: string; label: string; perm?: string }[] = [
   { id: 'exceptions', label: 'Exceptions (voids, refunds, discounts)', perm: 'reports.exceptions' },
   { id: 'stock', label: 'Out of stock' },
   { id: 'my_shift', label: 'My shift' },
+  { id: 'kitchen', label: 'Kitchen now', perm: 'kds.view' },
 ]
 
 export const DEFAULT_LAYOUT: Record<string, string[]> = {
-  owner: ['kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
-  manager: ['kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
-  supervisor: ['my_shift', 'kpis', 'hourly', 'top_items', 'stock'],
+  owner: ['kitchen', 'kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
+  manager: ['kitchen', 'kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
+  supervisor: ['my_shift', 'kitchen', 'kpis', 'hourly', 'top_items', 'stock'],
   cashier: ['my_shift'],
   accountant: ['kpis', 'hourly', 'tenders', 'exceptions'],
   staff: [], waiter: [], kitchen: [],
@@ -180,6 +181,8 @@ export default function Dashboard() {
             </section>
           )}
 
+          {has('kitchen') && s.branch && <KitchenNow branchId={s.branch.id} />}
+
           {has('kpis') && (
             <section className="kpi-row" role="tablist" aria-label={t('Choose what the chart shows')}>
               {tiles.map((k) => (
@@ -278,4 +281,41 @@ async function outOfStock(tenantId: string, branchId: string) {
   ])
   const q = new Map((lv ?? []).map((r) => [r.item_id as string, Number(r.qty)]))
   return (items ?? []).map((i) => ({ name: i.name as string, qty: q.get(i.id as string) ?? 0 })).filter((r) => r.qty <= 0)
+}
+
+/** Live kitchen monitor: open orders, the oldest one (ticking), late orders and today's average order time. */
+function KitchenNow({ branchId }: { branchId: string }) {
+  const { t } = useT()
+  const [open, setOpen] = useState<{ created_at: string; status: string; alert_minutes: number }[]>([])
+  const [today, setToday] = useState<R.KitchenRow[]>([])
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const load = async () => {
+      const day = new Date().toISOString().slice(0, 10)
+      const [o, k] = await Promise.all([
+        supabase.from('v_kitchen_times').select('created_at, status, alert_minutes').eq('branch_id', branchId).in('status', ['new', 'preparing']),
+        R.kitchenTimes({ from: day, to: day, branchId }),
+      ])
+      setOpen((o.data ?? []) as typeof open); setToday(k)
+    }
+    void load()
+    const a = window.setInterval(() => void load(), 15_000), b = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => { clearInterval(a); clearInterval(b) }
+  }, [branchId])
+  const ages = open.map((x) => (now - Date.parse(x.created_at)) / 1000)
+  const oldest = ages.length ? Math.max(...ages) : null
+  const lateNow = open.filter((x) => (now - Date.parse(x.created_at)) / 60000 > x.alert_minutes).length
+  const sum = R.kitchenSummary(today)[0]
+  return (
+    <section className="panel shift-panel">
+      <header><h2>{t('Kitchen now')}</h2><Link to="/kds" className="link-more">{t('Open kitchen screen')} <ArrowUpRight size={14} /></Link></header>
+      <div className="live-kitchen">
+        <div><span>{t('Open orders')}</span><b>{open.length}</b></div>
+        <div className={oldest != null && lateNow ? 'bad' : ''}><span>{t('Oldest order')}</span><b>{R.mmss(oldest)}</b></div>
+        <div className={lateNow ? 'bad' : ''}><span>{t('Late now')}</span><b>{lateNow}</b></div>
+        <div><span>{t('Average order time today')}</span><b>{R.mmss(sum?.total)}</b></div>
+        <div><span>{t('On time today')}</span><b>{sum?.onTime == null ? '—' : `${sum.onTime}%`}</b></div>
+      </div>
+    </section>
+  )
 }

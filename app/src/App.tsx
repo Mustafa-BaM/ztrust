@@ -4,6 +4,7 @@ import { useT } from './lib/i18n'
 import { useSession } from './lib/session'
 import Accounting from './pages/Accounting'
 import Customers from './pages/Customers'
+import Inventory from './pages/Inventory'
 import Kds from './pages/Kds'
 import Purchasing from './pages/Purchasing'
 import Dashboard from './pages/Dashboard'
@@ -33,6 +34,7 @@ function Guarded() {
         <Route path="/kds" element={<Kds />} />
         <Route path="/purchasing" element={<Purchasing />} />
         <Route path="/products" element={<Products />} />
+        <Route path="/inventory" element={<Inventory />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/accounting" element={<Accounting />} />

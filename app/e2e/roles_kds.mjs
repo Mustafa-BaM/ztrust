@@ -51,7 +51,7 @@ log('owner onboarded, tenant', tenant.slice(0, 8))
 // products in two categories
 await owner.getByRole('link', { name: 'Products' }).click()
 for (const [n, ar, price, cost, cat] of [['Latte', 'لاتيه', '1.500', '0.400', 'Coffee'], ['Burger', 'برجر', '3.000', '1.000', 'Food']]) {
-  await owner.getByRole('button', { name: 'Add product' }).click()
+  await owner.getByRole('button', { name: 'Add item' }).click()
   await owner.fill('#item-name', n); await owner.fill('#item-name-ar', ar); await owner.fill('#item-price', price); await owner.fill('#item-cost', cost)
   if (n === 'Latte') await owner.fill('#item-newcat', cat); else await owner.fill('#item-newcat', cat)
   await owner.getByRole('button', { name: 'Save' }).click(); await owner.getByRole('cell', { name: n, exact: true }).waitFor()

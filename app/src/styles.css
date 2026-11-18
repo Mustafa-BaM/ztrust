@@ -321,8 +321,7 @@ table.list { width: 100%; border-collapse: collapse; font-size: .9rem }
     --grid: #26304A; --axis: #98A3B8;
   }
 }
-.logo .logo-tile { fill: var(--rail) } .logo .logo-stroke { stroke: var(--accent) } .logo.logo-tiled .logo-stroke { stroke: #F3F5F9 }
-.side .logo .logo-tile { fill: #2346D8 }
+.logo .logo-tile { fill: #2346D8 } .logo .logo-stroke { stroke: var(--accent) } .logo.logo-tiled .logo-stroke { stroke: #FFFFFF }
 .auth-brand .logo .logo-stroke { stroke: var(--accent) }
 
 /* ---------- shell: rail + top bar ---------- */
@@ -546,3 +545,34 @@ code.token { display: block; font-family: var(--mono); font-size: .8rem; backgro
 .pair-bar input { width: 120px; min-height: 34px; font-family: var(--mono); letter-spacing: .2em; text-align: center }
 
 .t-off { font-size: 1.15rem; background: #3A2C0A; color: #F7D58C; border-radius: 6px; padding: 2px 8px; font-family: var(--mono) }
+
+.t-time { font-variant-numeric: tabular-nums; min-width: 4.2ch; text-align: end }
+.t-stage { display: flex; justify-content: space-between; font-size: .82rem; color: #C6CEDD; font-variant-numeric: tabular-nums }
+.t-bar { height: 5px; border-radius: 3px; background: #26304A; overflow: hidden }
+.t-bar i { display: block; height: 100%; background: #45C08F; transition: width .9s linear }
+.t-bar.warm i { background: var(--amber) } .t-bar.late i { background: #EE6A48 }
+.thumb-cell { width: 48px } .thumb { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; display: grid; place-items: center }
+.mono-thumb { background: var(--accent-soft); color: var(--accent); font-weight: 800; font-family: var(--display) }
+.pill.type-ingredient { background: var(--amber-soft); color: var(--amber-ink) } .pill.type-recipe { background: #EDE9FB; color: #5B45C9 }
+.type-seg { flex-wrap: wrap } .type-seg button { flex: 1 1 180px }
+.img-field { display: flex; gap: 16px; align-items: center }
+.img-preview { width: 96px; height: 96px; border-radius: 16px; object-fit: cover; border: 1px solid var(--line) }
+.img-preview.empty { display: grid; place-items: center; color: var(--muted); background: var(--bg) }
+.recipe-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px }
+.recipe-sum div { background: var(--bg); border-radius: 12px; padding: 10px 12px; display: grid } .recipe-sum span { font-size: .78rem; color: var(--muted) }
+.recipe-sum b { font-family: var(--display); font-size: 1.3rem } .recipe-sum .bad b { color: var(--bad) } .recipe-sum .good b { color: var(--good) }
+.tile-img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--bg) }
+.pos.with-images .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) }
+.pos.with-images .tile { min-height: 0 }
+textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%; resize: vertical }
+.receipt-settings { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start }
+@media (max-width: 980px) { .receipt-settings { grid-template-columns: 1fr } }
+.receipt-live .receipt-preview { max-height: none }
+.r-pre { white-space: pre-line; text-align: center } .r-terms { font-size: 10.5px; text-align: start }
+.plat { display: inline-flex; align-items: center; gap: 6px; font-weight: 600 }
+.plat::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--muted) }
+.plat-keeta::before { background: #FFD000 } .plat-talabat::before { background: #FF5A00 } .plat-jahez::before { background: #E21E26 }
+.plat-hungerstation::before { background: #FDCB00 } .plat-deliveroo::before { background: #00CCBC } .plat-careem::before { background: #1DBF73 }
+.live-kitchen { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px }
+.live-kitchen div { background: var(--bg); border-radius: 12px; padding: 10px 12px; display: grid } .live-kitchen span { font-size: .78rem; color: var(--muted) }
+.live-kitchen b { font-family: var(--display); font-size: 1.45rem; font-variant-numeric: tabular-nums } .live-kitchen .bad b { color: var(--bad) }

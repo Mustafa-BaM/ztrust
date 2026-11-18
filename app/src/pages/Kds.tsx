@@ -80,7 +80,7 @@ export default function Kds() {
   useEffect(() => {
     void load()
     const poll = window.setInterval(() => void load(), 10_000)
-    const tick = window.setInterval(() => setNow(Date.now()), 15_000)
+    const tick = window.setInterval(() => setNow(Date.now()), 1_000)
     const ch = supabase.channel(`kds-${branch.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kitchen_tickets', filter: `branch_id=eq.${branch.id}` }, () => void load())
       .subscribe()
@@ -135,16 +135,26 @@ export default function Kds() {
             <section key={c.status} className={`kds-col ${c.status}`}>
               <h2>{t(c.label)} <span className="count">{list.length}</span></h2>
               {list.length === 0 ? <Empty title={t('Nothing here')} /> : list.map((k) => {
-                const mins = Math.max(0, Math.floor((now - new Date(k.created_at).getTime()) / 60_000))
                 const limit = alertFor(k.station_id)
-                const tone = k.status === 'ready' ? 'ok' : mins >= limit ? 'late' : mins >= limit / 2 ? 'warm' : 'ok'
+                const created = new Date(k.created_at).getTime()
+                const end = k.ready_at ? new Date(k.ready_at).getTime() : now
+                const totalS = Math.max(0, Math.floor((end - created) / 1000))
+                const stageS = Math.max(0, Math.floor((now - new Date(k.status === 'preparing' && k.started_at ? k.started_at : k.created_at).getTime()) / 1000))
+                const mins = totalS / 60
+                const tone = mins >= limit ? 'late' : mins >= limit * 0.6 ? 'warm' : 'ok'
+                const pct = Math.min(100, (mins / limit) * 100)
                 return (
                   <article key={k.id} className={`ticket ${tone}`}>
                     <header>
                       <b className="t-ref">{k.order_ref.startsWith('OFF-') ? <span className="t-off" title={t('Saved offline, number assigned when synced')}>{k.order_ref.slice(0, 8)}</span> : `#${parseInt(k.order_ref.split('-').pop() ?? '0', 10)}`}</b>
                       <span className="pill">{t(TYPE_LABEL[k.order_type])}{k.table_no ? ` · ${t('Table')} ${k.table_no}` : ''}</span>
-                      <span className={`t-time ${tone}`}>{mins}′</span>
+                      <span className={`t-time ${tone}`} aria-label={t('Order time')}>{clock(totalS)}</span>
                     </header>
+                    <div className="t-stage">
+                      <span>{k.status === 'new' ? t('Waiting') : k.status === 'preparing' ? `${t('Preparing')} ${clock(stageS)}` : `${t('Ready in')} ${clock(totalS)}`}</span>
+                      <span className="muted">{t('Target')} {limit}′</span>
+                    </div>
+                    <div className={`t-bar ${tone}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}><i style={{ width: `${pct}%` }} /></div>
                     {!station && <div className="muted small">{stationName(k.station_id)}</div>}
                     {k.customer_name && <div className="small">{k.customer_name}</div>}
                     {k.note && <div className="t-note">{k.note}</div>}
@@ -173,6 +183,8 @@ export default function Kds() {
     </div>
   )
 }
+
+export const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 
 function beep(ctx: AudioContext) {
   const o = ctx.createOscillator(); const g = ctx.createGain()

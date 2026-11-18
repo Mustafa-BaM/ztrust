@@ -2,10 +2,10 @@
   <title>Z Trust · زد ترست</title>
   <rect width="560" height="140" fill="#F3F5F9"/>
   <g transform="translate(14,14) scale(0.933)">
-    <rect x="4" y="4" width="112" height="112" rx="30" fill="#0E1626"/>
-    <path d="M28 40 H82 C 91 40, 92 48, 87 55 C 75 72, 56 82, 32 86 H92" fill="none" stroke="#F3F5F9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="76" cy="22" r="7.5" fill="#F2B53A"/>
+    <rect width="120" height="120" rx="28" fill="#2346D8"/>
+    <path d="M32 32 H88 L32 88 H88" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M34 60 H86" stroke="#F2B53A" stroke-width="9" stroke-linecap="round"/>
   </g>
   <text x="148" y="84" font-family="Archivo, 'Arial Black', Arial, sans-serif" font-weight="800" font-size="62" fill="#0E1626" style="font-stretch:125%">Z Trust</text>
-  <text x="150" y="118" font-family="'Noto Kufi Arabic', Tahoma, sans-serif" font-weight="700" font-size="21" fill="#2346D8">زد ترست · نقطة بيع ومحاسبة موثوقة</text>
+  <text x="150" y="120" font-family="'Noto Kufi Arabic', Tahoma, sans-serif" font-weight="700" font-size="22" fill="#2346D8">زد ترست</text>
 </svg>

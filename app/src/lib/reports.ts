@@ -112,3 +112,26 @@ export function eachDay(from: string, to: string): string[] {
   for (let d = new Date(from + 'T00:00:00Z'); d <= new Date(to + 'T00:00:00Z'); d = new Date(d.getTime() + 86_400_000)) out.push(d.toISOString().slice(0, 10))
   return out
 }
+
+export interface KitchenRow { id: string; station: string; alert_minutes: number; order_ref: string; order_type: string; created_at: string; day: string; hour: number; wait_s: number | null; prep_s: number | null; total_s: number | null; pickup_s: number | null; late: boolean | null; status: string; item_qty: number }
+export async function kitchenTimes(r: Range) {
+  const { data } = await scope(supabase.from('v_kitchen_times').select('*'), r).neq('status', 'cancelled').order('created_at', { ascending: false }).limit(5000)
+  return (data ?? []) as KitchenRow[]
+}
+export async function channelSales(r: Range) {
+  const { data } = await scope(supabase.from('v_channel_sales').select('*'), r)
+  return rollup((data ?? []) as { channel: string; platform: string | null; orders: number; net_sales: number }[], (x) => x.channel, ['orders', 'net_sales']).sort((a, b) => b.net_sales - a.net_sales)
+}
+export const mmss = (sec: number | null | undefined) => (sec == null ? '—' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`)
+const avg = (xs: (number | null)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+/** Kitchen performance summary per station (and "All"). */
+export function kitchenSummary(rows: KitchenRow[]) {
+  const groups = new Map<string, KitchenRow[]>([['*', rows]])
+  for (const r of rows) groups.set(r.station, [...(groups.get(r.station) ?? []), r])
+  return [...groups.entries()].map(([k, list]) => {
+    const done = list.filter((x) => x.total_s != null)
+    return { station: k, tickets: list.length, done: done.length, wait: avg(list.map((x) => x.wait_s)), prep: avg(list.map((x) => x.prep_s)), total: avg(done.map((x) => x.total_s)),
+      pickup: avg(list.map((x) => x.pickup_s)), lateCount: done.filter((x) => x.late).length, onTime: done.length ? Math.round((done.filter((x) => !x.late).length / done.length) * 100) : null,
+      slowest: done.reduce<KitchenRow | null>((a, b) => (!a || (b.total_s ?? 0) > (a.total_s ?? 0) ? b : a), null) }
+  })
+}
