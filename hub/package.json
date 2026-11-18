@@ -1,0 +1,19 @@
+{
+  "name": "z-trust-hub",
+  "version": "0.1.0",
+  "description": "Z Trust Branch Hub: local-network kitchen, printing and sync that keeps working without internet",
+  "type": "module",
+  "bin": {
+    "z-trust-hub": "src/hub.mjs"
+  },
+  "scripts": {
+    "start": "node src/hub.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
+    "ws": "^8.23.0"
+  }
+}

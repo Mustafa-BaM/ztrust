@@ -1,0 +1,281 @@
+import { AlertTriangle, ArrowUpRight, Table2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { AreaChart, Delta, Donut, HBars, Heatmap, Sparkline, type SeriesPoint, type Slice } from '../components/charts'
+import { tenderLabel } from '../components/Receipt'
+import { Empty } from '../components/ui'
+import { useT } from '../lib/i18n'
+import { fmt } from '../lib/money'
+import * as R from '../lib/reports'
+import { useSession } from '../lib/session'
+import { getShift } from '../lib/shift'
+import { rpc, supabase } from '../lib/supabase'
+
+export const WIDGETS: { id: string; label: string; perm?: string }[] = [
+  { id: 'kpis', label: 'Sales summary' },
+  { id: 'hourly', label: 'Sales trend' },
+  { id: 'tenders', label: 'Payment methods' },
+  { id: 'heatmap', label: 'Busy hours' },
+  { id: 'top_items', label: 'Top items' },
+  { id: 'cashiers', label: 'Sales by cashier', perm: 'reports.all' },
+  { id: 'exceptions', label: 'Exceptions (voids, refunds, discounts)', perm: 'reports.exceptions' },
+  { id: 'stock', label: 'Out of stock' },
+  { id: 'my_shift', label: 'My shift' },
+]
+
+export const DEFAULT_LAYOUT: Record<string, string[]> = {
+  owner: ['kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
+  manager: ['kpis', 'hourly', 'tenders', 'heatmap', 'top_items', 'cashiers', 'exceptions', 'stock'],
+  supervisor: ['my_shift', 'kpis', 'hourly', 'top_items', 'stock'],
+  cashier: ['my_shift'],
+  accountant: ['kpis', 'hourly', 'tenders', 'exceptions'],
+  staff: [], waiter: [], kitchen: [],
+  purchasing: ['stock'], storekeeper: ['stock'], hr: [],
+  auditor: ['kpis', 'hourly', 'tenders', 'cashiers', 'exceptions'],
+}
+export const layoutFor = (role: string | null) => DEFAULT_LAYOUT[role ?? ''] ?? ['my_shift']
+
+type Preset = 'today' | '7d' | '30d' | 'month'
+type Metric = 'net' | 'orders' | 'avg' | 'refunds'
+const ACTION_ICON: Record<string, string> = { 'sale.refund': '↩', 'sale.cancel': '✕', 'sale.discount': '%', 'shift.variance': '≠', 'drawer.no_sale': '⊡' }
+
+interface Data {
+  cur: R.DailyRow[]; prev: R.DailyRow[]; hours: R.HourDayRow[]; prevHours: R.HourDayRow[]; tenders: R.TenderRow[]
+  items: R.ItemRow[]; cashiers: R.CashierRow[]; exceptions: R.ExceptionRow[]; stock: { name: string; qty: number }[]
+  shift: { sales_total: number; invoices: number; refunds_total: number } | null
+}
+
+/** Interactive dashboard: the owner chooses widgets per role; every number respects the viewer's permissions. */
+export default function Dashboard() {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tenant = s.tenant!
+  const [preset, setPreset] = useState<Preset>('7d')
+  const [allBranches, setAllBranches] = useState(s.can('reports.all'))
+  const [compare, setCompare] = useState(true)
+  const [metric, setMetric] = useState<Metric>('net')
+  const [asTable, setAsTable] = useState(false)
+  const [widgets, setWidgets] = useState<string[]>(layoutFor(s.role))
+  const [data, setData] = useState<Data | null>(null)
+
+  useEffect(() => {
+    if (!s.role) return
+    void supabase.from('dashboard_layouts').select('widgets').eq('tenant_id', tenant.id).eq('role', s.role).maybeSingle()
+      .then(({ data: l }) => { if (l?.widgets) setWidgets(l.widgets as string[]) })
+  }, [tenant.id, s.role])
+  const visible = widgets.filter((w) => { const def = WIDGETS.find((x) => x.id === w); return def && (!def.perm || s.can(def.perm)) })
+  const has = (w: string) => visible.includes(w)
+
+  const range = useMemo(() => R.rangeFor(preset), [preset])
+  const prevRange = useMemo(() => R.previousRange(range.from, range.to), [range])
+
+  useEffect(() => {
+    const branchId = allBranches ? null : s.branch?.id ?? null
+    const cur: R.Range = { ...range, branchId }, prv: R.Range = { from: prevRange.from, to: prevRange.to, branchId }
+    const shiftId = getShift(s.branch?.id, s.session?.user.id)
+    const need = (w: string) => visible.includes(w)
+    let live = true
+    void (async () => {
+      const [c, p, h, ph, tn, it, cs, ex, st, sh] = await Promise.all([
+        need('kpis') || need('hourly') ? R.daily(cur) : [], need('kpis') || need('hourly') ? R.daily(prv) : [],
+        need('hourly') || need('heatmap') ? R.hourlyByDay(cur) : [], need('hourly') && preset === 'today' ? R.hourlyByDay(prv) : [],
+        need('tenders') ? R.tenders(cur) : [], need('top_items') ? R.itemSales(cur) : [], need('cashiers') ? R.cashiers(cur) : [],
+        need('exceptions') ? R.exceptions(cur) : [], need('stock') && s.branch ? outOfStock(tenant.id, s.branch.id) : [],
+        need('my_shift') && shiftId ? rpc<Data['shift']>('shift_summary', { p_shift: shiftId }).catch(() => null) : null,
+      ])
+      if (live) setData({ cur: c, prev: p, hours: h, prevHours: ph, tenders: tn, items: it, cashiers: cs, exceptions: ex, stock: st, shift: sh })
+    })()
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, prevRange, allBranches, s.branch?.id, visible.join()])
+
+  const d = tenant.currency_decimals
+  const nf = lang === 'ar' ? 'ar-u-nu-latn' : 'en'
+  const money = (v: number) => fmt(v, tenant, lang)
+  const compact = (v: number) => new Intl.NumberFormat(nf, { notation: 'compact', maximumFractionDigits: 1 }).format(v / 10 ** d)
+  const count = (v: number) => new Intl.NumberFormat(nf).format(Math.round(v))
+
+  const days = R.eachDay(range.from, range.to), pdays = R.eachDay(prevRange.from, prevRange.to)
+  const byDay = (rows: R.DailyRow[]) => new Map(rows.map((r) => [r.day, r]))
+  const sum = (rows: R.DailyRow[], k: keyof R.DailyRow) => rows.reduce((a, r) => a + Number(r[k] ?? 0), 0)
+  const valueOf = (m: Metric, r?: { net_sales: number; invoices: number; refunds: number }) =>
+    !r ? 0 : m === 'net' ? Number(r.net_sales) : m === 'orders' ? Number(r.invoices) : m === 'refunds' ? Number(r.refunds) : r.invoices ? r.net_sales / r.invoices : 0
+  const totals = (rows: R.DailyRow[]) => ({ net_sales: sum(rows, 'net_sales'), invoices: sum(rows, 'invoices'), refunds: sum(rows, 'refunds') })
+  const kNow = data ? totals(data.cur) : null, kPrev = data ? totals(data.prev) : null
+
+  const series: SeriesPoint[] = useMemo(() => {
+    if (!data) return []
+    if (preset === 'today') {
+      const agg = (rows: R.HourDayRow[]) => {
+        const m = new Map<number, { net_sales: number; invoices: number; refunds: number }>()
+        for (const r of rows) { const c = m.get(r.hour) ?? { net_sales: 0, invoices: 0, refunds: 0 }; c.net_sales += Number(r.net_sales); c.invoices += Number(r.docs); m.set(r.hour, c) }
+        return m
+      }
+      const c = agg(data.hours), p = agg(data.prevHours)
+      const hrs = [...c.keys(), ...p.keys()]
+      const lo = Math.min(8, ...hrs), hi = Math.max(22, ...hrs)
+      return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
+        .map((h) => ({ label: `${String(h).padStart(2, '0')}:00`, value: valueOf(metric, c.get(h)), prev: compare ? valueOf(metric, p.get(h)) : undefined }))
+    }
+    const c = byDay(data.cur), p = byDay(data.prev)
+    const label = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString(lang === 'ar' ? 'ar-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short' })
+    return days.map((day, i) => ({ label: label(day), value: valueOf(metric, c.get(day)), prev: compare ? valueOf(metric, p.get(pdays[i])) : undefined }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, metric, compare, preset, lang])
+
+  const spark = (m: Metric) => (data ? days.map((day) => valueOf(m, byDay(data.cur).get(day))) : [])
+  const mFormat = (m: Metric) => (m === 'orders' ? count : money)
+  const metricName: Record<Metric, string> = { net: t('Net sales'), orders: t('Orders'), avg: t('Average ticket'), refunds: t('Refunds') }
+  const presetName: Record<Preset, string> = { today: t('Today'), '7d': t('7 days'), '30d': t('30 days'), month: t('This month') }
+  const prevName = preset === 'today' ? t('Yesterday') : t('Previous period')
+
+  // payment mix: up to 4 categorical slots, the rest folds into Other (hues are never cycled)
+  const slices: Slice[] = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of data?.tenders ?? []) if (Number(r.amount) > 0) m.set(r.tender, (m.get(r.tender) ?? 0) + Number(r.amount))
+    const list = [...m.entries()].sort((a, b) => b[1] - a[1])
+    const top = list.slice(0, 4).map(([k, v]) => ({ key: k, label: tenderLabel(k, lang), value: v }))
+    const rest = list.slice(4).reduce((a, [, v]) => a + v, 0)
+    return rest > 0 ? [...top, { key: 'other', label: t('Other'), value: rest }] : top
+  }, [data, lang, t])
+
+  const dayLabels = useMemo(() => [0, 1, 2, 3, 4, 5, 6].map((i) => new Date(Date.UTC(2026, 10, 15 + i)).toLocaleDateString(lang === 'ar' ? 'ar' : 'en-GB', { weekday: 'short', timeZone: 'UTC' })), [lang])
+  const heat = useMemo(() => {
+    const g = Array.from({ length: 7 }, () => Array(24).fill(0) as number[])
+    for (const r of data?.hours ?? []) { const wd = new Date(r.day + 'T00:00:00Z').getUTCDay(); g[wd][r.hour] += Number(r.net_sales) }
+    return g
+  }, [data])
+  const heatHours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), [])
+
+  const tiles: { m: Metric; value: number; prev: number; invert?: boolean }[] = kNow && kPrev ? [
+    { m: 'net', value: kNow.net_sales, prev: kPrev.net_sales },
+    { m: 'orders', value: kNow.invoices, prev: kPrev.invoices },
+    { m: 'avg', value: kNow.invoices ? kNow.net_sales / kNow.invoices : 0, prev: kPrev.invoices ? kPrev.net_sales / kPrev.invoices : 0 },
+    { m: 'refunds', value: kNow.refunds, prev: kPrev.refunds, invert: true },
+  ] : []
+
+  return (
+    <div className="page dash-page">
+      <div className="filters-row">
+        <div className="seg" role="group" aria-label={t('Period')}>
+          {(['today', '7d', '30d', 'month'] as Preset[]).map((p) => <button key={p} className={preset === p ? 'on' : ''} onClick={() => setPreset(p)}>{presetName[p]}</button>)}
+        </div>
+        <label className="check"><input id="dash-compare" type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />{t('Compare with previous period')}</label>
+        {s.can('reports.all') && s.branches.length > 1 && (
+          <label className="check"><input id="dash-all" type="checkbox" checked={allBranches} onChange={(e) => setAllBranches(e.target.checked)} />{t('All branches')}</label>)}
+        <span className="muted small range-label">{range.from === range.to ? range.from : `${range.from} → ${range.to}`}</span>
+      </div>
+
+      {!data ? <div className="dash-skel" aria-busy="true">{t('Loading…')}</div> : (
+        <div className="dash2">
+          {has('my_shift') && (
+            <section className="panel shift-panel">
+              <header><h2>{t('My shift')}</h2>{!data.shift && <Link to="/shift" className="link-more">{t('Open shift')} <ArrowUpRight size={14} /></Link>}</header>
+              {data.shift ? (
+                <div className="mini-kpis">
+                  <div><span>{t('Sales')}</span><b>{money(data.shift.sales_total)}</b></div>
+                  <div><span>{t('Invoices')}</span><b>{count(data.shift.invoices)}</b></div>
+                  <div><span>{t('Refunds')}</span><b>{money(data.shift.refunds_total)}</b></div>
+                </div>) : <p className="muted">{t('No open shift.')}</p>}
+            </section>
+          )}
+
+          {has('kpis') && (
+            <section className="kpi-row" role="tablist" aria-label={t('Choose what the chart shows')}>
+              {tiles.map((k) => (
+                <button key={k.m} role="tab" aria-selected={metric === k.m} className={`kpi2 ${metric === k.m ? 'on' : ''}`} onClick={() => setMetric(k.m)}>
+                  <span className="kpi2-label">{metricName[k.m]}</span>
+                  <b className="kpi2-value">{mFormat(k.m)(k.value)}</b>
+                  <span className="kpi2-foot"><Delta now={k.value} prev={k.prev} invert={k.invert} /><span className="muted">{t('vs')} {mFormat(k.m)(k.prev)}</span></span>
+                  <Sparkline values={spark(k.m)} />
+                </button>
+              ))}
+            </section>
+          )}
+
+          {has('hourly') && (
+            <section className="panel trend">
+              <header>
+                <div><h2>{metricName[metric]}</h2><p className="muted small">{preset === 'today' ? t('By hour') : t('By day')} · {presetName[preset]}</p></div>
+                <div className="row">
+                  {compare && <span className="legend-inline"><i className="key main" />{presetName[preset]}<i className="key prev" />{prevName}</span>}
+                  <button className={`icon-btn ${asTable ? 'on' : ''}`} onClick={() => setAsTable(!asTable)} title={t('Show as table')} aria-pressed={asTable}><Table2 size={17} /></button>
+                </div>
+              </header>
+              {asTable ? (
+                <div className="table-wrap"><table className="list compact">
+                  <thead><tr><th>{preset === 'today' ? t('Hour') : t('Day')}</th><th className="num">{presetName[preset]}</th>{compare && <th className="num">{prevName}</th>}</tr></thead>
+                  <tbody>{series.map((p) => <tr key={p.label}><td>{p.label}</td><td className="num">{mFormat(metric)(p.value)}</td>{compare && <td className="num">{mFormat(metric)(p.prev ?? 0)}</td>}</tr>)}</tbody>
+                </table></div>
+              ) : <AreaChart points={series} format={mFormat(metric)} axisFormat={metric === 'orders' ? count : compact} seriesName={presetName[preset]} prevName={prevName} />}
+            </section>
+          )}
+
+          {has('tenders') && (
+            <section className="panel">
+              <header><h2>{t('Payment methods')}</h2></header>
+              {slices.length === 0 ? <Empty title={t('No payments yet')} /> :
+                <Donut items={slices} format={money} center={<><b>{compact(slices.reduce((a, b) => a + b.value, 0))}</b><span>{tenant.currency}</span></>} />}
+            </section>
+          )}
+
+          {has('heatmap') && (
+            <section className="panel wide">
+              <header><div><h2>{t('Busy hours')}</h2><p className="muted small">{t('Net sales by weekday and hour')}</p></div></header>
+              {data.hours.length === 0 ? <Empty title={t('No sales yet')} /> : <Heatmap grid={heat} format={money} dayLabels={dayLabels} hours={heatHours} />}
+            </section>
+          )}
+
+          {has('top_items') && (
+            <section className="panel">
+              <header><h2>{t('Top items')}</h2>{s.can('reports.all') && <Link to="/reports" className="link-more">{t('All items')} <ArrowUpRight size={14} /></Link>}</header>
+              {data.items.length === 0 ? <Empty title={t('No sales yet')} /> :
+                <HBars items={data.items.slice(0, 7).map((r) => ({ key: r.item_id ?? r.name, label: r.name, value: r.total, sub: `${Number(r.qty)} ×` }))} format={money} />}
+            </section>
+          )}
+
+          {has('cashiers') && (
+            <section className="panel">
+              <header><h2>{t('Sales by cashier')}</h2></header>
+              {data.cashiers.length === 0 ? <Empty title={t('No sales yet')} /> :
+                <HBars items={data.cashiers.map((r) => ({ key: r.created_by, label: r.cashier || '—', value: r.sales,
+                  sub: r.discounts || r.refunds ? `${t('Discounts')} ${compact(r.discounts)} · ${t('Refunds')} ${compact(r.refunds)}` : undefined }))} format={money} />}
+            </section>
+          )}
+
+          {has('exceptions') && (
+            <section className="panel">
+              <header><h2>{t('Exceptions')}</h2>{data.exceptions.length > 0 && <span className="badge-count">{data.exceptions.length}</span>}</header>
+              {data.exceptions.length === 0 ? <Empty title={t('Nothing unusual in this period')} /> : (
+                <ul className="feed">{data.exceptions.slice(0, 8).map((r) => (
+                  <li key={r.id}>
+                    <span className="feed-ico" aria-hidden="true">{ACTION_ICON[r.action] ?? '•'}</span>
+                    <div><b>{t(R.ACTION_LABEL[r.action] ?? r.action)}</b>{r.amount != null && <span className="feed-amt">{money(r.amount)}</span>}
+                      <p className="muted small">{r.user_name}{r.approver_name ? ` · ${t('Approved by')} ${r.approver_name}` : ''}{r.reason ? ` · ${r.reason}` : ''}</p></div>
+                    <time className="muted small">{new Date(r.created_at).toLocaleTimeString(nf, { hour: '2-digit', minute: '2-digit' })}</time>
+                  </li>))}</ul>)}
+            </section>
+          )}
+
+          {has('stock') && (
+            <section className="panel">
+              <header><h2>{t('Out of stock')}</h2>{data.stock.length > 0 && <AlertTriangle size={17} className="warn-ico" aria-label={t('Needs attention')} />}</header>
+              {data.stock.length === 0 ? <Empty title={t('All tracked items are in stock')} /> : (
+                <ul className="feed">{data.stock.slice(0, 8).map((r) => (
+                  <li key={r.name}><span className="feed-ico bad" aria-hidden="true">!</span><div><b>{r.name}</b></div><b className="bad">{r.qty}</b></li>))}</ul>)}
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+async function outOfStock(tenantId: string, branchId: string) {
+  const [{ data: items }, { data: lv }] = await Promise.all([
+    supabase.from('items').select('id, name, name_ar').eq('tenant_id', tenantId).eq('track_stock', true).eq('is_active', true),
+    supabase.from('v_stock_levels').select('item_id, qty').eq('branch_id', branchId),
+  ])
+  const q = new Map((lv ?? []).map((r) => [r.item_id as string, Number(r.qty)]))
+  return (items ?? []).map((i) => ({ name: i.name as string, qty: q.get(i.id as string) ?? 0 })).filter((r) => r.qty <= 0)
+}
