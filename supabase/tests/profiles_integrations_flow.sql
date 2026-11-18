@@ -17,7 +17,8 @@ grant execute on function pg_temp.fails(text) to authenticated, service_role;
 do $$ begin
   assert (select count(*) from business_profiles) = 18, 'profiles';
   assert (select count(*) from business_profiles where launch) = 9, 'launch profiles';
-  assert (select string_agg(key, ',' order by sort) from feature_modules where built) = 'kitchen,recipes,delivery,credit,purchasing,integrations', 'built modules';
+  assert (select count(*) from feature_modules where built) = 18, 'built modules';
+  assert (select string_agg(key, ',' order by sort) from feature_modules where not built) = 'serials,consignment,quotations,gold_pricing', 'planned modules';
 end $$;
 
 -- ---------- a fashion shop signs up: only its built modules are on, no kitchen
@@ -30,7 +31,7 @@ insert into memberships(tenant_id, user_id, role, display_name) values
   (pg_temp.v('t')::uuid, pg_temp.v('M')::uuid, 'manager', 'Mona'), (pg_temp.v('t')::uuid, pg_temp.v('C')::uuid, 'cashier', 'Ali');
 do $$ declare f jsonb; begin
   select features into f from tenants where id = pg_temp.v('t')::uuid;
-  assert f = '{"purchasing": true}'::jsonb, 'fashion defaults: ' || f::text;
+  assert f = '{"loyalty": true, "variants": true, "promotions": true, "purchasing": true}'::jsonb, 'fashion defaults: ' || f::text;
   assert (select business_profile from tenants where id = pg_temp.v('t')::uuid) = 'fashion', 'profile saved';
   assert (select business_type from tenants where id = pg_temp.v('t')::uuid) = 'retail', 'legacy type follows family';
   assert not exists (select 1 from kitchen_stations where tenant_id = pg_temp.v('t')::uuid), 'no kitchen station for fashion';
@@ -57,7 +58,9 @@ do $$ begin
   assert pg_temp.fails(format($q$update tenants set features = '{"kitchen":true}' where id = %L$q$, pg_temp.v('t'))) = '42501', 'features are guarded';
   assert pg_temp.fails(format($q$update tenants set addons = '{"ai_assistant":true}' where id = %L$q$, pg_temp.v('t'))) = '42501', 'add-ons are guarded';
   assert pg_temp.fails(format($q$update tenants set currency = 'SAR' where id = %L$q$, pg_temp.v('t'))) = '42501', 'currency is guarded';
-  assert pg_temp.fails(format($q$select public.set_feature(%L, 'appointments', true)$q$, pg_temp.v('t'))) = 'ZT422', 'planned module refused';
+  assert pg_temp.fails(format($q$select public.set_feature(%L, 'serials', true)$q$, pg_temp.v('t'))) = 'ZT422', 'planned module refused';
+  assert pg_temp.fails(format($q$select public.set_feature(%L, 'kitchen', true)$q$, pg_temp.v('t'))) = 'ZT422', 'a fashion shop cannot switch the kitchen on';
+  assert pg_temp.fails(format($q$select public.set_feature(%L, 'appointments', true)$q$, pg_temp.v('t'))) = 'ZT422', 'nor appointments';
   assert pg_temp.fails(format($q$select public.set_feature(%L, 'nonsense', true)$q$, pg_temp.v('t'))) = 'ZT422', 'unknown module refused';
 end $$;
 reset role;
@@ -83,6 +86,8 @@ end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.set_feature(pg_temp.v('t')::uuid, 'credit', true);
+-- the shop adds a coffee corner: business type café (modules unchanged), then the kitchen can be switched on
+select public.set_business_profile(pg_temp.v('t')::uuid, 'cafe', false);
 select public.set_feature(pg_temp.v('t')::uuid, 'kitchen', true);
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id',gen_random_uuid(),'customer_id',pg_temp.v('cust'),
@@ -108,7 +113,7 @@ select pg_temp.as_user('O');
 select public.set_business_profile(pg_temp.v('t')::uuid, 'stationery', true);
 reset role;
 do $$ begin
-  assert (select features from tenants where id = pg_temp.v('t')::uuid) = '{"credit": true, "kitchen": false, "purchasing": true}'::jsonb, 'stationery keeps switches';
+  assert (select features from tenants where id = pg_temp.v('t')::uuid) = '{"credit": true, "kitchen": false, "loyalty": true, "variants": true, "promotions": true, "purchasing": true}'::jsonb, 'stationery keeps switches';
   assert (select business_profile from tenants where id = pg_temp.v('t')::uuid) = 'stationery', 'profile changed';
 end $$;
 
@@ -257,7 +262,7 @@ select pg_temp.as_user('O');
 insert into px values ('t2', public.create_tenant('{"name":"Legacy Cafe","country_code":"KW","business_type":"food","pin":"9999"}')::text);
 reset role;
 do $$ begin
-  assert (select features from tenants where id = pg_temp.v('t2')::uuid) = '{"credit": true, "kitchen": true, "recipes": true, "delivery": true, "purchasing": true}'::jsonb, 'legacy keeps all';
+  assert (select features from tenants where id = pg_temp.v('t2')::uuid) = '{"credit": true, "tables": true, "kitchen": true, "recipes": true, "delivery": true, "modifiers": true, "promotions": true, "purchasing": true}'::jsonb, 'legacy keeps its five plus restaurant defaults';
   assert (select business_profile from tenants where id = pg_temp.v('t2')::uuid) = 'restaurant', 'legacy profile';
 end $$;
 \o
