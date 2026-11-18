@@ -50,6 +50,9 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
   return (
     <div className="receipt">
       <div className="r-center">
+        {st.logo_show !== false && (st.logo_mono_url || tenant.logo_url) && (
+          <img className={`r-logo r-logo-${st.logo_size ?? 'm'}`} src={st.logo_mono_url || tenant.logo_url!} alt="" />
+        )}
         <strong className="r-big">{tenant.name_ar || tenant.name}</strong>
         {tenant.name_ar && <div>{tenant.name}</div>}
         {branch && <div>{branch.name_ar || branch.name}</div>}

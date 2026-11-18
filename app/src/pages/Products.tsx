@@ -106,8 +106,8 @@ export default function Products() {
   return (
     <div className="page">
       <div className="row between wrap"><h1>{t('Products')}</h1>
-        <div className="seg">{(['all', 'standard', 'recipe', 'ingredient'] as Kind[]).map((k) => (
-          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients' }[k])}</button>))}</div>
+        {s.has('recipes') && <div className="seg">{(['all', 'standard', 'recipe', 'ingredient'] as Kind[]).map((k) => (
+          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients' }[k])}</button>))}</div>}
         {canEdit && <div className="row">
           <label className="button">{t('Import CSV / Excel export')}<input id="import-file" type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = '' }} /></label>
           <button className="primary" onClick={() => setEdit({ price: 0, cost: 0, track_stock: true, is_active: true, item_type: kind === 'all' ? 'standard' : kind, unit: kind === 'ingredient' ? 'kg' : 'pcs' })}>{t('Add item')}</button>
@@ -134,7 +134,7 @@ export default function Products() {
                 {canCost && <td className={`num ${margin != null && margin < 50 ? 'bad' : ''}`}>{margin == null ? '—' : `${margin}%`}</td>}
                 <td className={`num ${low || ((stock[i.id] ?? 0) <= 0 && i.track_stock) ? 'bad' : ''}`}>{i.track_stock ? `${stock[i.id] ?? 0} ${t(i.unit ?? 'pcs')}` : '—'}</td>
                 <td className="row end">
-                  {type === 'recipe' && canEdit && <button className="ghost small" onClick={() => setRecipeFor(i)}><ChefHat size={15} />{t('Recipe')}</button>}
+                  {type === 'recipe' && canEdit && s.has('recipes') && <button className="ghost small" onClick={() => setRecipeFor(i)}><ChefHat size={15} />{t('Recipe')}</button>}
                   {canEdit && <button className="ghost small" onClick={() => setEdit(i)}>{t('Edit')}</button>}
                 </td>
               </tr>)
@@ -194,9 +194,9 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
   return (
     <Modal title={item.id ? t('Edit item') : t('Add item')} onClose={onClose} wide>
       <form className="grid2" onSubmit={save}>
-        <div className="span2 seg type-seg">{(['standard', 'recipe', 'ingredient'] as const).map((k) => (
+        {s.has('recipes') && <div className="span2 seg type-seg">{(['standard', 'recipe', 'ingredient'] as const).map((k) => (
           <button type="button" key={k} className={f.item_type === k ? 'on' : ''} onClick={() => setF({ ...f, item_type: k, unit: k === 'ingredient' && f.unit === 'pcs' ? 'kg' : f.unit })}>
-            {t({ standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)' }[k])}</button>))}</div>
+            {t({ standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)' }[k])}</button>))}</div>}
         <div className="img-field span2">
           {f.image_url ? <img src={f.image_url} alt="" className="img-preview" /> : <div className="img-preview empty"><ImagePlus size={28} /></div>}
           <div className="stack">

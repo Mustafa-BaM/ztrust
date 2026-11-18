@@ -25,7 +25,7 @@ log('signed up')
 
 await page.selectOption('#ob-country', 'KW')
 await page.getByRole('button', { name: 'Next' }).click()
-await page.getByRole('button', { name: /Café or restaurant/ }).click()
+await page.getByRole('button', { name: /^Restaurant/ }).click()
 await page.getByRole('button', { name: 'Next' }).click()
 await page.fill('#ob-name', 'Faisal Coffee')
 await page.fill('#ob-name-ar', 'قهوة فيصل')

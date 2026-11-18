@@ -13,12 +13,22 @@ export interface Tenant {
   default_language: string; business_type: BusinessType; tax_number: string | null; vat_rate: number
   prices_include_tax: boolean; brand_color: string | null; logo_url: string | null; plan: string; trial_ends_at: string
   settings?: TenantSettings
+  business_profile: string
+  features: Record<string, boolean>
+  addons?: Record<string, boolean>
 }
 
 export interface TenantSettings {
   pos_show_images?: boolean
   receipt_phones?: string; receipt_address?: string; receipt_cr?: string; receipt_website?: string
   receipt_header?: string; receipt_footer?: string; receipt_terms?: string
+  logo_show?: boolean; logo_size?: 's' | 'm' | 'l'; logo_mono_url?: string
+}
+
+export interface FeatureModule { key: string; name_en: string; name_ar: string; built: boolean; sort: number }
+export interface BusinessProfile {
+  key: string; name_en: string; name_ar: string; family: 'food' | 'retail' | 'services' | 'wholesale'
+  pos_mode: 'grid' | 'scan' | 'calendar' | 'ticket'; launch: boolean; modules: Record<string, 1 | 2>; sort: number
 }
 
 export interface Membership {

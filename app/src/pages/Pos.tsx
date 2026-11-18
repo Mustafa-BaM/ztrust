@@ -59,7 +59,7 @@ export default function Pos() {
         supabase.from('categories').select('*').eq('tenant_id', tenant.id).order('sort'),
         supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name').limit(2000),
         s.branch ? supabase.from('kitchen_stations').select('id, name, is_default, sort').eq('branch_id', s.branch.id).eq('is_active', true) : Promise.resolve({ data: [] }),
-        s.branch ? supabase.from('delivery_channels').select('id, display_name, platform').eq('branch_id', s.branch.id).eq('is_active', true) : Promise.resolve({ data: [] }),
+        s.branch && s.has('delivery') ? supabase.from('delivery_channels').select('id, display_name, platform').eq('branch_id', s.branch.id).eq('is_active', true) : Promise.resolve({ data: [] }),
       ]).then(([i, c, cu, ks, dc]) => {
         if (i.error || !live) return
         const next = { items: (i.data ?? []) as Item[], categories: c.data ?? [], customers: (cu.data ?? []) as Customer[], stations: (ks.data ?? []).length, stationList: (ks.data ?? []) as Catalog['stationList'], channels: (dc.data ?? []) as Catalog['channels'] }
@@ -105,7 +105,7 @@ export default function Pos() {
 
   const setQty = (idx: number, qty: number) => setLines((cur) => qty <= 0 ? cur.filter((_, i) => i !== idx) : cur.map((l, i) => (i === idx ? { ...l, qty } : l)))
   const clear = () => { setLines([]); setCustomer(null); setSel(0); setTable('') }
-  const hasKitchen = (catalog?.stations ?? 0) > 0
+  const hasKitchen = s.has('kitchen') && (catalog?.stations ?? 0) > 0
   const hub = useHub()
   const showImages = Boolean(tenant.settings?.pos_show_images)
 

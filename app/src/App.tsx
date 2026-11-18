@@ -39,7 +39,7 @@ function Guarded() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/accounting" element={<Accounting />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to={s.can('sale.create') ? '/pos' : s.can('kds.view') ? '/kds' : s.can('purchase.create') || s.can('inventory.receive') ? '/purchasing' : s.can('finance.view') || s.can('expenses.create') ? '/accounting' : '/dashboard'} replace />} />
+        <Route path="*" element={<Navigate to={s.can('sale.create') ? '/pos' : s.can('kds.view') && s.has('kitchen') ? '/kds' : s.has('purchasing') && (s.can('purchase.create') || s.can('inventory.receive')) ? '/purchasing' : s.can('finance.view') || s.can('expenses.create') ? '/accounting' : '/dashboard'} replace />} />
       </Route>
     </Routes>
   )

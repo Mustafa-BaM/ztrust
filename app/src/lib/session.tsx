@@ -16,6 +16,8 @@ interface SessionCtx {
   roles: RolePkg[]
   roleName: (key: string | null | undefined, lang: string) => string
   can: (perm: string) => boolean
+  /** module switched on for this business (Settings → Business type & modules) */
+  has: (feature: string) => boolean
   limit: (perm: string) => number | null
   selectTenant: (id: string) => void
   selectBranch: (id: string) => void
@@ -96,6 +98,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     perms, roles,
     roleName: (key, lang) => { const r = roles.find((x) => x.key === key); return r ? (lang === 'ar' ? r.name_ar : r.name_en) : key ?? '' },
     can: (p) => role === 'owner' || p in perms,
+    has: (f) => Boolean(member?.tenants?.features?.[f]),
     limit: (p) => (role === 'owner' ? null : perms[p] ?? null),
     selectTenant: (id) => { store.set('zt.tenant', id); setTenantId(id) },
     selectBranch: (id) => setBranchId(id),

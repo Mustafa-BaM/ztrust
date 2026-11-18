@@ -47,6 +47,18 @@ Like Loyverse, devices on the same shop Wi-Fi keep working together when the int
 
 With the internet down, sales are queued on the POS, tickets go POS → hub → kitchen screens instantly, and kitchen chits print as images (Arabic shaped correctly) on network printers. When the internet returns, the POS sends the sales and the hub sends the kitchen tickets with their timings, linked to the sales, without duplicates.
 
+## Business types, modules and integrations
+
+- **Business types**: 18 profiles in the catalog (`business_profiles`), 9 open for sign-up: restaurant, café, fast food & cloud kitchen, grocery, fashion, stationery & gifts, perfume & oud, salon & barber, laundry. Each switches on the modules it needs; sign-up cards list only what exists today and mark the rest "Coming".
+- **Modules** (`feature_modules`, `tenants.features`): kitchen, recipes, delivery, sell on account, purchasing, integrations are built; 16 more are planned and cannot be switched on yet. Owner switches them in Settings → Business type & modules. Off = hidden in the app **and** refused by the server (kitchen tickets, recipe lines, delivery channels and orders, purchase orders, on-account payments). Data is never deleted.
+- **Tenant guard**: plan, trial, add-ons, currency, country and module switches cannot be changed by a direct table update; only through the owner functions (or billing with the service role).
+- **Shop logo**: uploaded in Settings → Business and receipt; a colour copy (receipt preview, payment page) and a Floyd–Steinberg black-and-white copy at 576 dots for thermal printers. Show/hide and three sizes.
+- **Webhooks** (Settings → Integrations): events `sale.completed`, `refund.created`, `order.ready`, `stock.low`, `shift.closed`, `customer.created`, `payment_link.paid` go to an outbox and are sent by `dispatch-events` with an HMAC-SHA256 signature (`X-ZTrust-Signature: sha256=…` over `<timestamp>.<body>`), retried after 1 min, 5 min, 30 min, 2 h and 12 h. Delivery log in the app. Works with n8n, Make, Zapier or any HTTPS endpoint.
+- **API keys**: owner creates read-only keys (products, stock, sales, customers), shown once, stored hashed, revocable. `GET /functions/v1/public-api/v1/{items|stock|sales|customers}` with `Authorization: Bearer ztk_…`.
+- **Paid add-ons** (`tenants.addons`, set by billing only): WhatsApp and the AI assistant are shown as "on request"; not built yet.
+
+Deploy: `supabase functions deploy dispatch-events --no-verify-jwt` (secret `DISPATCH_SECRET`, schedule it every minute with pg_cron + pg_net) and `supabase functions deploy public-api --no-verify-jwt`.
+
 ## Run it
 
 ```bash
@@ -68,8 +80,8 @@ Edge functions: `supabase functions deploy invite-staff` and `supabase functions
 supabase/tests/run.sh   # throwaway Postgres 16 · pos_flow + kitchen_purchasing_flow + accounting_flow (incl. tamper detection): applies migrations, runs the money-flow test (split tender, approvals, refunds, AR, payment link, shift variance, ledger balance, hash chain, tenant isolation, VAT-inclusive maths)
 ```
 
-Browser tests (need `supabase start` + `npm run dev`; the hub test also needs `npm run build`) — `app/e2e/hub_offline.mjs` cuts the internet for the whole shop including the hub: `node app/e2e/smoke.mjs` and `SERVICE_KEY=… node app/e2e/roles_kds.mjs` and `SERVICE_KEY=… node app/e2e/accounting.mjs`.
+Browser tests (need `supabase start` + `npm run dev`; the hub test also needs `npm run build`) — `app/e2e/hub_offline.mjs` cuts the internet for the whole shop including the hub: `node app/e2e/smoke.mjs` and `SERVICE_KEY=… node app/e2e/roles_kds.mjs` and `SERVICE_KEY=… node app/e2e/accounting.mjs` and `SERVICE_ROLE_KEY=… ANON_KEY=… node --experimental-strip-types app/e2e/profiles_integrations.mjs` (runs a local signed-webhook receiver and the real dispatcher).
 
 ## Not in this slice yet
 
-Payment gateway checkout (the link page and webhook are ready), ZATCA Phase 2 signing/reporting, direct ESC/POS printing (Print Bridge), open checks / pay-later tables, structured modifiers, FEFO/batches, platform-specific webhook adapters (need each platform's partner API documentation), bank reconciliation, fixed-asset register and depreciation runs, year-end closing entry, consignment, biometric/geofence attendance, payroll, subscription billing, integrations hub, and on-premise packaging. These follow the roadmap phases.
+Payment gateway checkout (the link page and webhook are ready), ZATCA Phase 2 signing/reporting, direct ESC/POS printing (Print Bridge), open checks / pay-later tables, structured modifiers, FEFO/batches, the 16 planned modules (variants, promotions, appointments, job cards…), WhatsApp and the AI assistant add-ons, platform-specific webhook adapters (need each platform's partner API documentation), bank reconciliation, fixed-asset register and depreciation runs, year-end closing entry, consignment, biometric/geofence attendance, payroll, subscription billing, and on-premise packaging. These follow the roadmap phases.

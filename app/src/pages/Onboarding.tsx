@@ -1,34 +1,41 @@
+import { CalendarDays, Coffee, Gift, Scissors, Shirt, ShoppingBasket, Sparkles, Store, UtensilsCrossed, WashingMachine, Zap, type LucideIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Logo } from '../components/ui'
 import { useT } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { rpc, supabase } from '../lib/supabase'
-import type { BusinessType, Country } from '../lib/types'
+import type { BusinessProfile, Country, FeatureModule } from '../lib/types'
 
-const TYPES: { id: BusinessType; label: string; hint: string }[] = [
-  { id: 'retail', label: 'Retail shop', hint: 'Products, barcodes, variants, stock' },
-  { id: 'food', label: 'Café or restaurant', hint: 'Menu, modifiers, kitchen screen or printer' },
-  { id: 'services', label: 'Salon or services', hint: 'Services, staff, bookings' },
-  { id: 'mixed', label: 'Mixed business', hint: 'All of the above' },
-]
+const ICON: Record<string, LucideIcon> = {
+  restaurant: UtensilsCrossed, cafe: Coffee, quick_service: Zap, grocery: ShoppingBasket, fashion: Shirt,
+  stationery: Gift, perfume: Sparkles, salon: Scissors, laundry: WashingMachine,
+}
+const FAMILY: Record<string, string> = { food: 'Food & drinks', retail: 'Retail', services: 'Services', wholesale: 'Wholesale' }
 
 /** Four short steps; everything else has a sensible default and can be changed later in Settings. */
 export default function Onboarding() {
   const { t, lang } = useT()
   const s = useSession()
   const [countries, setCountries] = useState<Country[]>([])
+  const [profiles, setProfiles] = useState<BusinessProfile[]>([])
+  const [mods, setMods] = useState<FeatureModule[]>([])
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [f, setF] = useState({
-    country_code: 'KW', business_type: 'retail' as BusinessType, name: '', name_ar: '', tax_number: '',
+    country_code: 'KW', business_profile: '', name: '', name_ar: '', tax_number: '',
     branch_name: '', display_name: '', pin: '', brand_color: '#2346D8', language: lang,
   })
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }))
   const country = countries.find((c) => c.code === f.country_code)
+  const nm = (x: { name_en: string; name_ar: string }) => (lang === 'ar' ? x.name_ar : x.name_en)
 
   useEffect(() => {
-    supabase.from('countries').select('*').order('name_en').then(({ data }) => setCountries((data ?? []) as Country[]))
+    void Promise.all([
+      supabase.from('countries').select('*').order('name_en'),
+      supabase.from('business_profiles').select('*').eq('launch', true).order('sort'),
+      supabase.from('feature_modules').select('*').order('sort'),
+    ]).then(([c, p, m]) => { setCountries((c.data ?? []) as Country[]); setProfiles((p.data ?? []) as BusinessProfile[]); setMods((m.data ?? []) as FeatureModule[]) })
   }, [])
 
   async function finish() {
@@ -39,12 +46,20 @@ export default function Onboarding() {
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
 
+  /** What the card promises: only modules that exist today, then the ones coming for this type. */
+  const promise = (p: BusinessProfile) => {
+    const keys = Object.entries(p.modules).filter(([, v]) => v === 2).map(([k]) => k)
+    const ready = mods.filter((m) => m.built && keys.includes(m.key)).map(nm)
+    const soon = mods.filter((m) => !m.built && keys.includes(m.key)).map(nm)
+    return { ready: [t('Sales, stock, customers, accounting'), ...ready].join(' · '), soon: soon.join(' · ') }
+  }
+  const families = [...new Set(profiles.map((p) => p.family))]
   const steps = [t('Country'), t('Business type'), t('Business details'), t('You')]
-  const canNext = [!!country, !!f.business_type, f.name.trim().length > 1, f.display_name.trim().length > 0 && /^\d{4,6}$/.test(f.pin)][step]
+  const canNext = [!!country, !!f.business_profile, f.name.trim().length > 1, f.display_name.trim().length > 0 && /^\d{4,6}$/.test(f.pin)][step]
 
   return (
     <div className="auth">
-      <div className="auth-card wide">
+      <div className={`auth-card wide ${step === 1 ? 'wider' : ''}`}>
         <div className="auth-brand"><Logo size={44} tile /><h1 className="wordmark">{t('Set up your business')}</h1></div>
         <ol className="steps">{steps.map((x, i) => <li key={x} className={i === step ? 'on' : i < step ? 'done' : ''}>{x}</li>)}</ol>
 
@@ -58,11 +73,25 @@ export default function Onboarding() {
           </div>
         )}
         {step === 1 && (
-          <div className="choice-grid">
-            {TYPES.map((x) => (
-              <button key={x.id} className={`choice ${f.business_type === x.id ? 'on' : ''}`} onClick={() => set('business_type', x.id)}>
-                <b>{t(x.label)}</b><span>{t(x.hint)}</span>
-              </button>
+          <div className="stack">
+            <p className="muted">{t('Pick the closest match. Z Trust shows the tools this kind of business needs and hides the rest; you can change it later.')}</p>
+            {families.map((fam) => (
+              <div key={fam} className="stack tight">
+                <h3 className="fam-head">{t(FAMILY[fam])}</h3>
+                <div className="profile-grid">
+                  {profiles.filter((p) => p.family === fam).map((p) => {
+                    const Icon = ICON[p.key] ?? Store
+                    const pr = promise(p)
+                    return (
+                      <button key={p.key} className={`choice profile ${f.business_profile === p.key ? 'on' : ''}`} aria-pressed={f.business_profile === p.key} onClick={() => set('business_profile', p.key)}>
+                        <span className="choice-ico"><Icon size={20} aria-hidden="true" /></span>
+                        <b>{nm(p)}</b>
+                        <span>{pr.ready}</span>
+                        {pr.soon && <span className="soon"><CalendarDays size={12} aria-hidden="true" /> {t('Coming')}: {pr.soon}</span>}
+                      </button>)
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         )}

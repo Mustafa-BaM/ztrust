@@ -8,6 +8,9 @@ import { Receipt, type ReceiptData } from '../components/Receipt'
 import { num, toMinor } from '../lib/money'
 import { WIDGETS, layoutFor } from './Dashboard'
 import { configureHub, detectHub, hubSettings, useHub } from '../lib/hub'
+import { prepareLogo } from '../lib/logo'
+import Modules from './settings/Modules'
+import Integrations from './settings/Integrations'
 
 const MODULES: Record<string, string> = {
   sales: 'Sales and cash', kitchen: 'Kitchen', catalog: 'Products and customers', inventory: 'Inventory',
@@ -19,25 +22,29 @@ export default function Settings() {
   const s = useSession()
   const owner = s.role === 'owner'
   const tabs = [
+    { id: 'modules' as const, label: 'Business type & modules', show: owner },
     { id: 'roles' as const, label: 'Roles & permissions', show: owner },
     { id: 'staff' as const, label: 'Staff', show: s.can('staff.manage') },
     { id: 'dash' as const, label: 'Dashboards', show: owner },
-    { id: 'kitchen' as const, label: 'Kitchen stations', show: s.can('settings.manage') },
+    { id: 'kitchen' as const, label: 'Kitchen stations', show: s.can('settings.manage') && s.has('kitchen') },
     { id: 'business' as const, label: 'Business and receipt', show: s.can('settings.manage') },
-    { id: 'delivery' as const, label: 'Delivery platforms', show: s.can('settings.manage') },
+    { id: 'delivery' as const, label: 'Delivery platforms', show: s.can('settings.manage') && s.has('delivery') },
+    { id: 'integrations' as const, label: 'Integrations', show: s.can('settings.manage') },
     { id: 'device' as const, label: 'This device', show: true },
   ].filter((x) => x.show)
-  const [tab, setTab] = useState(tabs[0].id)
+  const [tab, setTab] = useState<(typeof tabs)[number]['id']>(tabs[0].id)
   return (
     <div className="page">
       <h1>{t('Settings')}</h1>
       <div className="tabs">{tabs.map((x) => <button key={x.id} className={tab === x.id ? 'on' : ''} onClick={() => setTab(x.id)}>{t(x.label)}</button>)}</div>
+      {tab === 'modules' && <Modules />}
       {tab === 'roles' && <Roles />}
       {tab === 'staff' && <Staff />}
       {tab === 'dash' && <Dashboards />}
       {tab === 'kitchen' && <Kitchen />}
       {tab === 'business' && <Business />}
       {tab === 'delivery' && <Delivery />}
+      {tab === 'integrations' && <Integrations onOpenModules={() => setTab('modules')} />}
       {tab === 'device' && <Device />}
     </div>
   )
@@ -392,7 +399,32 @@ function Business() {
     pos_show_images: Boolean(st.pos_show_images), receipt_address: st.receipt_address ?? '', receipt_phones: st.receipt_phones ?? '',
     receipt_cr: st.receipt_cr ?? '', receipt_website: st.receipt_website ?? '', receipt_header: st.receipt_header ?? '',
     receipt_terms: st.receipt_terms ?? '', receipt_footer: st.receipt_footer ?? '',
+    logo_show: st.logo_show ?? true, logo_size: st.logo_size ?? 'm',
   })
+  const [logo, setLogo] = useState({ url: tn.logo_url, mono: st.logo_mono_url ?? null as string | null })
+  const [logoBusy, setLogoBusy] = useState(false)
+  async function uploadLogo(file: File) {
+    setLogoBusy(true); setMsg(null)
+    try {
+      const { color, mono } = await prepareLogo(file)
+      const stamp = Date.now()
+      const up = async (name: string, blob: Blob) => {
+        const path = `${tn.id}/${name}-${stamp}.png`
+        const { error } = await supabase.storage.from('branding').upload(path, blob, { contentType: 'image/png', cacheControl: '31536000' })
+        if (error) throw error
+        return supabase.storage.from('branding').getPublicUrl(path).data.publicUrl
+      }
+      const next = { url: await up('logo', color), mono: await up('logo-mono', mono) }
+      const { error } = await supabase.from('tenants').update({ logo_url: next.url, settings: { ...st, ...r, logo_mono_url: next.mono } }).eq('id', tn.id)
+      if (error) throw error
+      setLogo(next); setMsg(t('Logo saved')); await s.reload()
+    } catch (x) { setMsg(t((x as Error).message)) } finally { setLogoBusy(false) }
+  }
+  async function removeLogo() {
+    const { error } = await supabase.from('tenants').update({ logo_url: null, settings: { ...st, ...r, logo_mono_url: null } }).eq('id', tn.id)
+    if (!error) { setLogo({ url: null, mono: null }); await s.reload() }
+    setMsg(error ? error.message : t('Logo removed'))
+  }
   const [msg, setMsg] = useState<string | null>(null)
   async function save() {
     const { error } = await supabase.from('tenants').update({ name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, brand_color: f.brand_color,
@@ -415,6 +447,21 @@ function Business() {
       <div className="receipt-settings">
         <div className="card grid2">
           <h2 className="span2">{t('Receipt and invoice')}</h2>
+          <div className="span2 logo-field">
+            <div className="logo-box">{logo.url ? <img src={logo.url} alt={t('Shop logo')} /> : <span className="muted small">{t('No logo')}</span>}</div>
+            <div className="stack">
+              <div className="row wrap">
+                <label className={`button ${logoBusy ? 'disabled' : ''}`}>{logoBusy ? t('Please wait…') : logo.url ? t('Replace logo') : t('Upload logo')}
+                  <input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden disabled={logoBusy}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = '' }} /></label>
+                {logo.url && <button type="button" className="ghost" onClick={() => void removeLogo()}>{t('Remove')}</button>}
+              </div>
+              <label className="check"><input id="logo-show" type="checkbox" checked={r.logo_show} onChange={(e) => setR({ ...r, logo_show: e.target.checked })} />{t('Print the logo on receipts')}</label>
+              <div className="seg" role="group" aria-label={t('Logo size')}>{(['s', 'm', 'l'] as const).map((k) => (
+                <button type="button" key={k} className={r.logo_size === k ? 'on' : ''} onClick={() => setR({ ...r, logo_size: k })}>{t({ s: 'Small', m: 'Medium', l: 'Large' }[k])}</button>))}</div>
+              <p className="muted small">{t('PNG, JPG, WebP or SVG. A black-and-white copy is made for thermal printers, which cannot print grey.')}</p>
+            </div>
+          </div>
           <label className="field"><span>{t('Phone numbers')}</span><input id="r-phones" value={r.receipt_phones} onChange={(e) => setR({ ...r, receipt_phones: e.target.value })} placeholder="+965 2222 0000 · WhatsApp 5555 0000" /></label>
           <label className="field"><span>{t('Commercial registration (CR)')}</span><input id="r-cr" value={r.receipt_cr} onChange={(e) => setR({ ...r, receipt_cr: e.target.value })} /></label>
           <label className="field span2"><span>{t('Address')}</span><textarea id="r-address" rows={2} value={r.receipt_address} onChange={(e) => setR({ ...r, receipt_address: e.target.value })} /></label>
@@ -425,7 +472,7 @@ function Business() {
           <label className="field span2"><span>{t('Closing message')}</span><input id="r-footer" value={r.receipt_footer} onChange={(e) => setR({ ...r, receipt_footer: e.target.value })} placeholder="شكراً لزيارتكم · Thank you" /></label>
           <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
         </div>
-        <div className="card receipt-live"><h2>{t('Preview')}</h2><div className="receipt-preview"><Receipt data={preview} tenant={{ ...tn, name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, settings: { ...st, ...r } }} branch={s.branch} /></div></div>
+        <div className="card receipt-live"><h2>{t('Preview')}</h2><div className="receipt-preview"><Receipt data={preview} tenant={{ ...tn, name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, logo_url: logo.url, settings: { ...st, ...r, logo_mono_url: logo.mono ?? undefined } }} branch={s.branch} /></div></div>
       </div>
     </section>
   )

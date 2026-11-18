@@ -181,7 +181,7 @@ export default function Dashboard() {
             </section>
           )}
 
-          {has('kitchen') && s.branch && <KitchenNow branchId={s.branch.id} />}
+          {has('kitchen') && s.has('kitchen') && s.branch && <KitchenNow branchId={s.branch.id} />}
 
           {has('kpis') && (
             <section className="kpi-row" role="tablist" aria-label={t('Choose what the chart shows')}>

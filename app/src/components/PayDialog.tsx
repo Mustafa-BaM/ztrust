@@ -25,6 +25,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], onCl
   onClose: () => void; onConfirm: (t: TenderEntry[], change: number) => void; onPickCustomer: () => void
 }) {
   const { t, lang } = useT()
+  const tenders = TENDERS.filter((x) => x !== 'on_account' || tenant.features?.credit)
   const d = tenant.currency_decimals
   const [entries, setEntries] = useState<TenderEntry[]>([])
   const [tender, setTender] = useState<Tender>('cash')
@@ -70,7 +71,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], onCl
         </div>
 
         <div className="tender-row" role="radiogroup" aria-label={t('Payment method')}>
-          {[...TENDERS, ...(channels.length ? (['platform'] as Tender[]) : [])].map((x) => (
+          {[...tenders, ...(channels.length ? (['platform'] as Tender[]) : [])].map((x) => (
             <button key={x} role="radio" aria-checked={tender === x} className={`tender ${tender === x ? 'on' : ''}`}
                     disabled={disabled(x)} onClick={() => setTender(x)} title={disabled(x) ? (x === 'payment_link' && !online ? t('Needs internet') : t('Choose a customer first')) : ''}>
               {tenderLabel(x, lang)}
