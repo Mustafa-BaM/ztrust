@@ -79,6 +79,21 @@ Printing: choose 80 mm, 58 mm or an A4 invoice at print time; receipt font (IBM 
 
 Known limits: deposits carry no VAT at the time of payment (Saudi rules tax advance payments — change before a KSA launch); loyalty redemptions are expensed rather than deferred (IFRS 15 would defer); unlimited memberships are recognised at sale; table orders, packages, deposits and points need internet; `expire_packages` must be scheduled (pg_cron).
 
+## Growth additions
+
+Open business types: 15 (adds bakery, florist, spa, car wash, gym and central market / co-op).
+
+| Module | What it does |
+|---|---|
+| QR ordering & kiosk | Guests order from `/order/<shop>?t=<table code>`; staff accept into the table's open order and the kitchen. Kiosk `/order/<shop>?kiosk=1`: pay at the counter. Printable QR sheet per table. |
+| Customer display | `/display` on the till's second screen follows the cart live (same device). |
+| Gift cards | Sold at the till without VAT (liability), spent with the code; balances and expiry in Customers. |
+| Reservations & waitlist | Table reservations without double booking, walk-in waitlist with a WhatsApp "table ready". |
+| Branch transfers & production | Stock leaves one branch and arrives when confirmed (shortfall = transfer loss); production makes stocked items from their recipe. |
+| Own delivery | Delivery address and driver at the till, cash on delivery held as "cash with drivers" until handed in to the drawer; driver's own list. |
+| Attendance | Clock in/out from the phone within the branch radius; timesheet and CSV. |
+| Memberships check-in | Unlimited memberships (gym, car wash) checked in from the customer card. |
+
 ## Run it
 
 ```bash

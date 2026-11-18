@@ -4,7 +4,8 @@ import { useT } from '../lib/i18n'
 import { fmt, num, toMinor } from '../lib/money'
 import { useSession } from '../lib/session'
 import { rpc, supabase } from '../lib/supabase'
-import type { Customer } from '../lib/types'
+import type { Customer, CustomerPackage } from '../lib/types'
+import { parseError } from '../lib/supabase'
 
 export default function Customers() {
   const { t, lang } = useT()
@@ -14,6 +15,8 @@ export default function Customers() {
   const [bal, setBal] = useState<Record<string, number>>({})
   const [q, setQ] = useState('')
   const [edit, setEdit] = useState<Partial<Customer> | null>(null)
+  const [view, setView] = useState<Customer | null>(null)
+  const [tab, setTab] = useState<'customers' | 'gift'>('customers')
 
   const load = useCallback(async () => {
     let query = supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name').limit(300)
@@ -30,16 +33,20 @@ export default function Customers() {
   return (
     <div className="page">
       <div className="row between"><h1>{t('Customers')}</h1><button className="primary" onClick={() => setEdit({ credit_limit: 0 })}>{t('Add customer')}</button></div>
+      {s.has('gift_cards') && <div className="tabs"><button className={tab === 'customers' ? 'on' : ''} onClick={() => setTab('customers')}>{t('Customers')}</button><button className={tab === 'gift' ? 'on' : ''} onClick={() => setTab('gift')}>{t('Gift cards')}</button></div>}
+      {tab === 'gift' ? <GiftCards /> : <>
       <input id="customers-q" className="search" placeholder={t('Search by name or phone')} value={q} onChange={(e) => setQ(e.target.value)} />
       {rows.length === 0 ? <Empty title={t('No customers yet.')} /> : (
         <div className="table-wrap"><table className="list">
           <thead><tr><th>{t('Name')}</th><th>{t('Phone')}</th><th className="num">{t('Credit limit')}</th><th className="num">{t('Balance owed')}</th><th /></tr></thead>
           <tbody>{rows.map((c) => (
-            <tr key={c.id}><td>{c.name}</td><td className="mono">{c.phone}</td><td className="num">{c.credit_limit ? fmt(c.credit_limit, tenant, lang) : '—'}</td>
+            <tr key={c.id} tabIndex={0} className="clickable" onClick={() => setView(c)}><td>{c.name}</td><td className="mono">{c.phone}</td><td className="num">{c.credit_limit ? fmt(c.credit_limit, tenant, lang) : '—'}</td>
               <td className={`num ${(bal[c.id] ?? 0) > 0 ? 'bad' : ''}`}>{bal[c.id] != null ? fmt(bal[c.id], tenant, lang) : '—'}</td>
-              <td>{s.can('customers.manage') && <button className="ghost small" onClick={() => setEdit(c)}>{t('Edit')}</button>}</td></tr>))}</tbody>
+              <td>{s.can('customers.manage') && <button className="ghost small" onClick={(e) => { e.stopPropagation(); setEdit(c) }}>{t('Edit')}</button>}</td></tr>))}</tbody>
         </table></div>
       )}
+      </>}
+      {view && <CustomerCard c={view} onClose={() => setView(null)} />}
       {edit && <CustomerForm c={edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load() }} />}
     </div>
   )
@@ -49,11 +56,11 @@ function CustomerForm({ c, onClose, onSaved }: { c: Partial<Customer>; onClose: 
   const { t } = useT()
   const s = useSession()
   const d = s.tenant!.currency_decimals
-  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', credit_limit: num(c.credit_limit ?? 0, d) })
+  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', credit_limit: num(c.credit_limit ?? 0, d) })
   const [err, setErr] = useState<string | null>(null)
   async function save(e: React.FormEvent) {
     e.preventDefault()
-    const row = { tenant_id: s.tenant!.id, name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null,
+    const row = { tenant_id: s.tenant!.id, name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, address: f.address.trim() || null,
       ...(s.can('customers.manage') ? { credit_limit: toMinor(f.credit_limit || '0', d) } : {}) }
     const r = c.id ? await supabase.from('customers').update(row).eq('id', c.id) : await supabase.from('customers').insert(row)
     if (r.error) setErr(r.error.message); else onSaved()
@@ -64,10 +71,84 @@ function CustomerForm({ c, onClose, onSaved }: { c: Partial<Customer>; onClose: 
         <label className="field"><span>{t('Name')}</span><input id="c-name" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
         <label className="field"><span>{t('Phone')}</span><input id="c-phone" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="+965…" /></label>
         <label className="field"><span>{t('E-mail')}</span><input id="c-email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+        <label className="field"><span>{t('Delivery address')}</span><textarea id="c-address" rows={2} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
         {s.can('customers.manage') && <label className="field"><span>{t('Credit limit (0 = no credit sales)')}</span><input id="c-limit" inputMode="decimal" value={f.credit_limit} onChange={(e) => setF({ ...f, credit_limit: e.target.value })} /></label>}
         {err && <p className="error">{err}</p>}
         <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary">{t('Save')}</button></div>
       </form>
     </Modal>
+  )
+}
+
+/** One customer: points, prepaid packages and memberships (with check-in), gift cards. */
+function CustomerCard({ c, onClose }: { c: Customer; onClose: () => void }) {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [pkgs, setPkgs] = useState<(CustomerPackage & { visits?: number })[]>([])
+  const [points, setPoints] = useState<number | null>(null)
+  const [cards, setCards] = useState<{ code: string; balance: number; status: string; expires_on: string | null }[]>([])
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const load = useCallback(async () => {
+    const [p, g] = await Promise.all([
+      supabase.from('customer_packages').select('*, package_uses(count)').eq('customer_id', c.id).order('created_at', { ascending: false }),
+      supabase.from('gift_cards').select('code, balance, status, expires_on').eq('customer_id', c.id),
+    ])
+    setPkgs(((p.data ?? []) as (CustomerPackage & { package_uses: { count: number }[] })[]).map((x) => ({ ...x, visits: x.package_uses?.[0]?.count ?? 0 })))
+    setCards(g.data ?? [])
+    if (s.has('loyalty')) setPoints(await rpc<number>('customer_points', { p_customer: c.id }).catch(() => null))
+  }, [c.id, s])
+  useEffect(() => { void load() }, [load])
+  async function checkIn(id: string) {
+    setMsg(null)
+    try { const r = await rpc<{ visits: number; expires_on: string }>('use_membership', { p_id: id }); setMsg({ ok: true, text: t('Checked in · visit {n} · valid until {d}', { n: r.visits, d: r.expires_on }) }); await load() }
+    catch (e) { const p = parseError(e); setMsg({ ok: false, text: p.kind === 'message' ? t(p.message) : t('Not allowed') }) }
+  }
+  return (
+    <Modal title={c.name} onClose={onClose} wide>
+      <div className="stack">
+        <p className="muted">{c.phone}{c.address ? ` · ${c.address}` : ''}</p>
+        {points != null && <div className="kpi2"><span className="kpi2-label">{t('Loyalty points')}</span><b className="kpi2-value">{points}</b></div>}
+        {pkgs.length > 0 && <>
+          <h3 className="sub-h">{t('Packages and memberships')}</h3>
+          <ul className="mod-list">{pkgs.map((p) => {
+            const active = p.status === 'active' && p.expires_on >= new Date().toISOString().slice(0, 10)
+            return (
+              <li key={p.id}><div><b>{p.name}</b><p className="muted small">{p.kind === 'unlimited' ? t('{n} visits', { n: p.visits ?? 0 }) : t('{u} of {n} sessions used', { u: p.sessions_used, n: p.sessions_total ?? 0 })} · {t('valid until {d}', { d: p.expires_on })}</p></div>
+                {p.kind === 'unlimited' && active ? <button className="primary" onClick={() => void checkIn(p.id)}>{t('Check in')}</button> : <span className={`pill ${active ? '' : 'muted-pill'}`}>{t(active ? 'Active' : p.status === 'used' ? 'Used' : 'Expired')}</span>}</li>)
+          })}</ul></>}
+        {cards.length > 0 && <>
+          <h3 className="sub-h">{t('Gift cards')}</h3>
+          <ul className="mod-list">{cards.map((g) => <li key={g.code}><span className="mono">{g.code}</span><b>{fmt(g.balance, tn, lang)}</b></li>)}</ul></>}
+        {msg && <p className={msg.ok ? 'success' : 'error'} role="status">{msg.text}</p>}
+        {pkgs.length === 0 && cards.length === 0 && points == null && <p className="muted">{t('No packages, points or gift cards yet.')}</p>}
+      </div>
+    </Modal>
+  )
+}
+
+function GiftCards() {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [rows, setRows] = useState<{ id: string; code: string; initial: number; balance: number; status: string; expires_on: string | null; created_at: string }[]>([])
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    let x = supabase.from('gift_cards').select('*').eq('tenant_id', tn.id).order('created_at', { ascending: false }).limit(300)
+    if (q) x = x.ilike('code', `%${q.replace(/[%,()]/g, '')}%`)
+    void x.then(({ data }) => setRows(data ?? []))
+  }, [tn.id, q])
+  const out = rows.filter((r) => r.status === 'active').reduce((a, r) => a + r.balance, 0)
+  return (
+    <section className="stack">
+      <div className="kpi-row"><div className="kpi2"><span className="kpi2-label">{t('Cards')}</span><b className="kpi2-value">{rows.length}</b></div>
+        <div className="kpi2"><span className="kpi2-label">{t('Outstanding balance (owed to card holders)')}</span><b className="kpi2-value">{fmt(out, tn, lang)}</b></div></div>
+      <p className="muted small">{t('Sell a gift card from the till (Products → type “Gift card”). Customers pay with it by choosing “Gift card” and entering the code.')}</p>
+      <input id="gc-q" className="search" placeholder={t('Search code')} value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="table-wrap"><table className="list">
+        <thead><tr><th>{t('Code')}</th><th className="num">{t('Value')}</th><th className="num">{t('Balance')}</th><th>{t('Valid until')}</th><th>{t('Issued')}</th></tr></thead>
+        <tbody>{rows.map((r) => <tr key={r.id}><td className="mono">{r.code}</td><td className="num">{fmt(r.initial, tn, lang)}</td><td className="num"><b>{fmt(r.balance, tn, lang)}</b></td><td>{r.expires_on ?? '—'}</td><td>{new Date(r.created_at).toLocaleDateString()}</td></tr>)}</tbody>
+      </table></div>
+    </section>
   )
 }

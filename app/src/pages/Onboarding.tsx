@@ -1,4 +1,4 @@
-import { CalendarDays, Coffee, Gift, Scissors, Shirt, ShoppingBasket, Sparkles, Store, UtensilsCrossed, WashingMachine, Zap, type LucideIcon } from 'lucide-react'
+import { CakeSlice, CalendarDays, Car, Coffee, Dumbbell, Flower2, Gift, Scissors, Shirt, ShoppingBasket, ShoppingCart, Sparkles, Store, UtensilsCrossed, WashingMachine, Waves, Zap, type LucideIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Logo } from '../components/ui'
 import { useT } from '../lib/i18n'
@@ -9,6 +9,7 @@ import type { BusinessProfile, Country, FeatureModule } from '../lib/types'
 const ICON: Record<string, LucideIcon> = {
   restaurant: UtensilsCrossed, cafe: Coffee, quick_service: Zap, grocery: ShoppingBasket, fashion: Shirt,
   stationery: Gift, perfume: Sparkles, salon: Scissors, laundry: WashingMachine,
+  bakery: CakeSlice, florist: Flower2, spa: Waves, car_wash: Car, gym: Dumbbell, hypermarket: ShoppingCart,
 }
 const FAMILY: Record<string, string> = { food: 'Food & drinks', retail: 'Retail', services: 'Services', wholesale: 'Wholesale' }
 

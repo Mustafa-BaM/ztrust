@@ -211,7 +211,7 @@ function Staff() {
   const [inv, setInv] = useState({ email: '', display_name: '', role: 'cashier' })
   const [msg, setMsg] = useState<string | null>(null)
   const load = useCallback(async () => {
-    const { data } = await supabase.from('memberships').select('tenant_id,user_id,role,display_name,branch_ids,is_active,bookable,commission_pct').eq('tenant_id', tn.id).order('display_name')
+    const { data } = await supabase.from('memberships').select('tenant_id,user_id,role,display_name,branch_ids,is_active,bookable,commission_pct,is_driver').eq('tenant_id', tn.id).order('display_name')
     setList((data ?? []) as Membership[])
   }, [tn.id])
   useEffect(() => { void load() }, [load])
@@ -231,7 +231,7 @@ function Staff() {
   return (
     <section className="stack">
       <div className="card table-wrap"><table className="list">
-        <thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Branches')}</th><th>{t('Active')}</th>{s.has('appointments') && <th>{t('Takes bookings')}</th>}{s.has('commissions') && <th>{t('Commission %')}</th>}</tr></thead>
+        <thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Branches')}</th><th>{t('Active')}</th>{s.has('appointments') && <th>{t('Takes bookings')}</th>}{s.has('own_delivery') && <th>{t('Driver')}</th>}{s.has('commissions') && <th>{t('Commission %')}</th>}</tr></thead>
         <tbody>{list.map((m) => (
           <tr key={m.user_id}><td>{m.display_name}</td>
             <td>{m.role === 'owner' ? s.roleName('owner', lang) : (

@@ -1,7 +1,7 @@
 /** Role package key (system templates or custom packages created by the owner). */
 export type Role = string
 export type BusinessType = 'retail' | 'food' | 'services' | 'mixed'
-export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'platform' | 'loyalty' | 'package' | 'deposit' | 'other'
+export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'platform' | 'loyalty' | 'package' | 'deposit' | 'gift_card' | 'cod' | 'other'
 
 export interface Country {
   code: string; name_en: string; name_ar: string; currency: string; currency_decimals: number
@@ -26,7 +26,7 @@ export interface TenantSettings {
   receipt_font?: string; receipt_font_size?: 's' | 'm' | 'l'
   scale_prefix?: string; scale_plu_len?: number; scale_mode?: 'weight' | 'price'
   loyalty_earn?: number; loyalty_point_value?: number; loyalty_min_points?: number
-  booking_online?: boolean; booking_step?: number
+  booking_online?: boolean; booking_step?: number; gift_card_months?: number; qr_ordering?: boolean
 }
 
 export interface ModifierGroup { id: string; name: string; name_ar: string | null; min_select: number; max_select: number; sort: number }
@@ -44,7 +44,7 @@ export interface WorkOrder {
   total: number; deposit_paid: number; deposit_used: number; sale_id: string | null; created_at: string; ready_at: string | null
 }
 export interface OpenOrder { id: string; branch_id: string; table_id: string | null; label: string; guests: number | null; customer_id: string | null; lines: (CartLine & { modifiers?: string[]; modifier_names?: string | null })[]; status: string; opened_at: string }
-export interface DiningTable { id: string; branch_id: string; area: string; name: string; seats: number; x: number; y: number; shape: 'square' | 'round' | 'long'; is_active: boolean }
+export interface DiningTable { id: string; branch_id: string; area: string; name: string; seats: number; x: number; y: number; shape: 'square' | 'round' | 'long'; is_active: boolean; qr_token?: string }
 
 export interface FeatureModule { key: string; name_en: string; name_ar: string; built: boolean; sort: number; universal?: boolean }
 export interface BusinessProfile {
@@ -57,18 +57,18 @@ export interface Membership {
   pin_hash?: string | null; tenants?: Tenant
 }
 
-export interface Branch { id: string; tenant_id: string; code: string; name: string; name_ar: string | null; timezone: string }
+export interface Branch { id: string; tenant_id: string; code: string; name: string; name_ar: string | null; timezone: string; lat?: number | null; lng?: number | null; geofence_m?: number }
 export interface Category { id: string; tenant_id: string; name: string; name_ar: string | null; color: string | null; sort: number; station_id?: string | null }
 
 export interface Item {
   id: string; tenant_id: string; category_id: string | null; name: string; name_ar: string | null; sku: string | null
   barcode: string | null; price: number; cost: number; tax_rate: number | null; track_stock: boolean; is_active: boolean
-  image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe' | 'service' | 'package'; unit?: string; reorder_point?: number | null
+  image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe' | 'service' | 'package' | 'gift_card'; unit?: string; reorder_point?: number | null
   parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null
   track_expiry?: boolean; commission_pct?: number | null; duration_min?: number | null
 }
 
-export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number }
+export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number; address?: string | null }
 
 export interface SaleLine {
   id: string; item_id: string | null; name: string; qty: number; unit_price: number; discount: number; tax_rate: number
@@ -98,6 +98,8 @@ export interface CartLine {
   customer_package_id?: string | null; package_value?: number | null
   /** open order (table) line already sent to the kitchen */
   fired?: boolean
+  /** gift card sold: the code of a pre-printed card (optional) */
+  gift_code?: string
 }
 export interface TenderEntry { tender: Tender; amount: number; reference?: string; channel_id?: string }
 
@@ -121,3 +123,8 @@ export interface PurchaseOrder {
 }
 
 export interface DeliveryChannel { id: string; tenant_id: string; branch_id: string; platform: string; display_name: string; store_ref: string | null; is_active: boolean; auto_accept: boolean; prep_minutes: number; commission_pct: number; webhook_token_hash: string | null }
+
+export interface OnlineOrder { id: string; branch_id: string; table_id: string | null; source: 'qr' | 'kiosk'; number: number; name: string | null; phone: string | null; note: string | null
+  lines: { key: string; item_id: string; name: string; qty: number; unit_price: number; modifiers: string[]; note: string | null }[]; total: number; status: string; created_at: string }
+export interface DeliveryRow { id: string; branch_id: string; sale_id: string; customer_id: string | null; address: string | null; phone: string | null; note: string | null
+  driver_id: string | null; status: 'pending' | 'assigned' | 'picked_up' | 'delivered' | 'failed'; cash_to_collect: number; cash_settled: boolean; created_at: string; sales?: { number: string; total: number } | null }

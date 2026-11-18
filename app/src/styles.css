@@ -713,3 +713,41 @@ tr.row-bad td { background: var(--bad-soft) } tr.row-warn td { background: var(-
 
 .deposit-row select { width: auto } .deposit-row { align-items: center }
 .a4, .a4 * { font-family: inherit }
+
+/* ---------------------------------------------------------------- growth: online orders, delivery, display, QR ordering, attendance */
+.incoming-btn.alert { background: var(--amber-soft); color: var(--amber-ink); border-color: var(--amber) }
+.order-bar .ghost.on { background: var(--accent); color: var(--accent-ink) }
+.card.incoming { gap: 6px } .plain-list { margin: 0; padding-inline-start: 18px }
+.split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; align-items: start } @media (max-width: 900px) { .split { grid-template-columns: 1fr } }
+.cards-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px }
+.card.delivery p { margin: 0; display: flex; gap: 6px; align-items: center }
+.pill.dl-pending { background: var(--amber-soft); color: var(--amber-ink) } .pill.dl-delivered { background: #DDF3EA; color: var(--good) } .pill.dl-failed { background: var(--bad-soft); color: var(--bad) }
+tr.clickable { cursor: pointer }
+.clock-card { justify-items: center; text-align: center }
+.clock-btn { display: grid; place-items: center; gap: 6px; width: min(100%, 320px); min-height: 150px; border-radius: 24px; font-size: 1.2rem }
+.clock-btn.in { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) } .clock-btn.out { background: var(--amber-soft); color: var(--amber-ink); border-color: var(--amber) }
+.qr-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px }
+.qr-sheet figure { margin: 0; border: 1px dashed var(--line); border-radius: 12px; padding: 12px; display: grid; justify-items: center; gap: 6px; break-inside: avoid; background: #fff; color: #111 }
+.qr-sheet img { width: 100%; max-width: 220px } .qr-sheet figcaption { display: grid; justify-items: center }
+@media print { .qr-sheet { grid-template-columns: repeat(3, 1fr) } body * { visibility: hidden } .qr-sheet, .qr-sheet * { visibility: visible } .qr-sheet { position: absolute; inset: 0 } }
+/* customer display */
+.display { min-height: 100dvh; background: #0B1020; color: #fff; display: grid; grid-template-rows: auto 1fr; padding: 24px; box-sizing: border-box }
+.display header { display: flex; align-items: center; gap: 14px } .display header img { max-height: 56px; border-radius: 8px; background: #fff; padding: 4px } .display h1 { margin: 0; font-size: 1.6rem }
+.display-welcome { display: grid; place-items: center; font-size: 3rem; font-weight: 700; color: #8AA0FF }
+.display-body { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; margin-top: 20px }
+.display-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 1.3rem }
+.display-body li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #26304A; padding-bottom: 8px } .display-body li em { color: #45C08F; font-style: normal; font-size: .9rem }
+.display-totals { background: #151C33; border-radius: 16px; padding: 20px; display: grid; gap: 8px; font-size: 1.2rem }
+.display-totals > div { display: flex; justify-content: space-between } .display-totals .save { color: #45C08F }
+.display-totals .grand { font-size: 2.6rem; font-weight: 800; color: #F2B53A }
+/* QR / kiosk ordering */
+.order-page { min-height: 100dvh; background: var(--bg); padding: 0 0 90px }
+.order-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line) }
+.order-head img { max-height: 40px; border-radius: 6px } .order-head div { display: grid; flex: 1 }
+.order-cats { display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px } .order-cats button { white-space: nowrap; border-radius: 999px } .order-cats button.on { background: var(--brand, var(--accent)); color: #fff; border-color: transparent }
+.order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 0 16px }
+.order-item { display: grid; gap: 4px; justify-items: start; text-align: start; padding: 10px; border-radius: 14px; min-height: 0 }
+.order-item img, .order-item .tile-mono { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); font-size: 2rem }
+.order-cart-btn { position: fixed; inset-inline: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); min-height: 56px; font-size: 1.05rem; background: var(--brand, var(--accent)); border-color: transparent }
+.order-done { display: grid; place-items: center; gap: 10px; padding: 40px 16px; text-align: center } .order-no { font-size: 4rem; font-weight: 800 }
+.order-page.kiosk .order-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) } .order-page.kiosk .order-item { font-size: 1.1rem }

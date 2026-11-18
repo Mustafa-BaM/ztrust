@@ -35,8 +35,8 @@ function zatcaTlv(seller: string, vatNo: string, iso: string, total: string, vat
   return btoa(String.fromCharCode(...all))
 }
 
-const TENDER_AR: Record<string, string> = { loyalty: 'نقاط الولاء', package: 'من الباقة', deposit: 'العربون', platform: 'منصة توصيل', cash: 'نقدي', card: 'بطاقة', on_account: 'آجل', payment_link: 'رابط دفع', bank_transfer: 'تحويل', store_credit: 'رصيد', other: 'أخرى' }
-const TENDER_EN: Record<string, string> = { loyalty: 'Loyalty points', package: 'From package', deposit: 'Deposit', platform: 'Delivery platform', cash: 'Cash', card: 'Card', on_account: 'On account', payment_link: 'Payment link', bank_transfer: 'Bank transfer', store_credit: 'Store credit', other: 'Other' }
+const TENDER_AR: Record<string, string> = { gift_card: 'بطاقة هدية', cod: 'الدفع عند الاستلام', loyalty: 'نقاط الولاء', package: 'من الباقة', deposit: 'العربون', platform: 'منصة توصيل', cash: 'نقدي', card: 'بطاقة', on_account: 'آجل', payment_link: 'رابط دفع', bank_transfer: 'تحويل', store_credit: 'رصيد', other: 'أخرى' }
+const TENDER_EN: Record<string, string> = { gift_card: 'Gift card', cod: 'Cash on delivery', loyalty: 'Loyalty points', package: 'From package', deposit: 'Deposit', platform: 'Delivery platform', cash: 'Cash', card: 'Card', on_account: 'On account', payment_link: 'Payment link', bank_transfer: 'Bank transfer', store_credit: 'Store credit', other: 'Other' }
 
 /** Bilingual thermal receipt (58/80 mm). Printing goes through the OS print dialog, so any installed printer works. */
 export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: Tenant; branch: Branch | null }) {

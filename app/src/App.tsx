@@ -3,7 +3,12 @@ import Layout from './components/Layout'
 import { useT } from './lib/i18n'
 import { useSession } from './lib/session'
 import Accounting from './pages/Accounting'
+import Attendance from './pages/Attendance'
 import Book from './pages/Book'
+import Deliveries from './pages/Deliveries'
+import Display from './pages/Display'
+import Order from './pages/Order'
+import Reservations from './pages/Reservations'
 import Calendar from './pages/Calendar'
 import Orders from './pages/Orders'
 import Promotions from './pages/Promotions'
@@ -37,6 +42,9 @@ function Guarded() {
         <Route path="/shift" element={<Shift />} />
         <Route path="/kds" element={<Kds />} />
         <Route path="/calendar" element={<Calendar />} />
+        <Route path="/reservations" element={<Reservations />} />
+        <Route path="/deliveries" element={<Deliveries />} />
+        <Route path="/attendance" element={<Attendance />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/promotions" element={<Promotions />} />
         <Route path="/purchasing" element={<Purchasing />} />
@@ -57,6 +65,8 @@ export default function App() {
     <Routes>
       <Route path="/pay/:token" element={<PayLink />} />
       <Route path="/book/:slug" element={<Book />} />
+      <Route path="/order/:slug" element={<Order />} />
+      <Route path="/display" element={<Display />} />
       <Route path="*" element={<Guarded />} />
     </Routes>
   )

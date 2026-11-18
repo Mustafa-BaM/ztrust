@@ -11,7 +11,7 @@ export interface CatalogStation { id: string; name: string; is_default: boolean;
 export interface Catalog {
   items: Item[]; categories: Category[]; customers: Customer[]; stations?: number; stationList?: CatalogStation[]; channels?: { id: string; display_name: string; platform: string }[]
   modGroups?: ModifierGroup[]; modOptions?: ModifierOption[]; itemGroups?: { item_id: string; group_id: string; sort: number }[]
-  promos?: Promotion[]; staff?: { user_id: string; display_name: string; bookable: boolean; color: string | null }[]
+  promos?: Promotion[]; staff?: { user_id: string; display_name: string; bookable: boolean; color: string | null; is_driver?: boolean }[]
   savedAt: string
 }
 

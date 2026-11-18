@@ -502,7 +502,7 @@ begin
   perform _require_feature(b.tenant_id, 'attendance');
   if b.lat is not null then
     if p_lat is null then raise exception 'allow location on this device to clock in' using errcode = 'ZT422'; end if;
-    v_dist := _distance_m(b.lat, b.lng, p_lat, p_lng);
+    v_dist := _distance_m(b.lat::numeric, b.lng::numeric, p_lat, p_lng);
     if v_dist > b.geofence_m + least(coalesce(p_accuracy, 0), 100) then
       raise exception 'You are % m from the branch; clock in at the branch', v_dist using errcode = 'ZT422'; end if;
   end if;

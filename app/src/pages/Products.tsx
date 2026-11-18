@@ -10,16 +10,17 @@ import type { Category, Item, ModifierGroup } from '../lib/types'
 import { ModifierManager, VariantDialog } from './products/Extras'
 
 const UNITS = ['pcs', 'kg', 'g', 'l', 'ml', 'box', 'pack']
-type Kind = 'all' | 'standard' | 'recipe' | 'ingredient' | 'service' | 'package'
+type Kind = 'all' | 'standard' | 'recipe' | 'ingredient' | 'service' | 'package' | 'gift_card'
 type IType = Exclude<Kind, 'all'>
-const TYPE_LABEL: Record<IType, string> = { standard: 'Product', recipe: 'Recipe', ingredient: 'Ingredient', service: 'Service', package: 'Package' }
-const TYPE_FORM: Record<IType, string> = { standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)', service: 'Service (time, no stock)', package: 'Package (prepaid sessions)' }
+const TYPE_LABEL: Record<IType, string> = { standard: 'Product', recipe: 'Recipe', ingredient: 'Ingredient', service: 'Service', package: 'Package', gift_card: 'Gift card' }
+const TYPE_FORM: Record<IType, string> = { standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)', service: 'Service (time, no stock)', package: 'Package (prepaid sessions)', gift_card: 'Gift card (amount chosen at sale)' }
 /** item types this business uses */
 export function itemTypes(has: (f: string) => boolean): IType[] {
   const out: IType[] = ['standard']
   if (has('appointments') || has('job_cards') || has('commissions') || has('memberships')) out.push('service')
   if (has('memberships')) out.push('package')
   if (has('recipes')) out.push('recipe', 'ingredient')
+  if (has('gift_cards')) out.push('gift_card')
   return out
 }
 
@@ -124,7 +125,7 @@ export default function Products() {
     <div className="page">
       <div className="row between wrap"><h1>{t('Products')}</h1>
         {types.length > 1 && <div className="seg">{(['all', ...types] as Kind[]).map((k) => (
-          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients', service: 'Services', package: 'Packages' }[k])}</button>))}</div>}
+          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients', service: 'Services', package: 'Packages', gift_card: 'Gift cards' }[k])}</button>))}</div>}
         {canEdit && <div className="row">
           {s.has('modifiers') && <button onClick={() => setMods(true)}><ListPlus size={16} />{t('Add-ons')}</button>}
           <label className="button">{t('Import CSV / Excel export')}<input id="import-file" type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = '' }} /></label>
@@ -152,7 +153,7 @@ export default function Products() {
                 {canCost && <td className={`num ${margin != null && margin < 50 ? 'bad' : ''}`}>{margin == null ? '—' : `${margin}%`}</td>}
                 <td className={`num ${low || ((stock[i.id] ?? 0) <= 0 && i.track_stock) ? 'bad' : ''}`}>{i.track_stock ? `${stock[i.id] ?? 0} ${t(i.unit ?? 'pcs')}` : '—'}</td>
                 <td className="row end">
-                  {type === 'recipe' && canEdit && s.has('recipes') && <button className="ghost small" onClick={() => setRecipeFor(i)}><ChefHat size={15} />{t('Recipe')}</button>}
+                  {(type === 'recipe' || (s.has('production') && type === 'standard' && i.track_stock && !i.is_template)) && canEdit && s.has('recipes') && <button className="ghost small" onClick={() => setRecipeFor(i)}><ChefHat size={15} />{t('Recipe')}</button>}
                   {canEdit && s.has('variants') && type === 'standard' && !i.parent_id && <button className="ghost small" onClick={() => setVariantFor(i)}><Layers size={15} />{t('Variants')}</button>}
                   {canEdit && <button className="ghost small" onClick={() => setEdit(i)}>{t('Edit')}</button>}
                 </td>
@@ -202,8 +203,8 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const set = (k: keyof typeof f, v: string | boolean | null) => setF({ ...f, [k]: v })
-  const isIng = f.item_type === 'ingredient', isRecipe = f.item_type === 'recipe', isService = f.item_type === 'service', isPkg = f.item_type === 'package'
-  const noStock = isRecipe || isService || isPkg
+  const isIng = f.item_type === 'ingredient', isRecipe = f.item_type === 'recipe', isService = f.item_type === 'service', isPkg = f.item_type === 'package', isGift = f.item_type === 'gift_card'
+  const noStock = isRecipe || isService || isPkg || isGift
 
   async function upload(file: File) {
     setBusy(true); setErr(null)

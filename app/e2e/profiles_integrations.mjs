@@ -49,7 +49,7 @@ await p.selectOption('#ob-country', 'KW'); await p.getByRole('button', { name: '
 
 // ---- sign-up: 9 business types; cards promise only what exists, the rest is marked "Coming"
 await p.getByRole('button', { name: /^Fashion & shoes/ }).waitFor()
-must(await p.locator('.choice.profile').count() === 9, 'nine business types at sign-up')
+must(await p.locator('.choice.profile').count() === 15, 'fifteen business types at sign-up')
 // every type open for sign-up is complete: nothing on its card is marked "Coming"
 must(await p.locator('.choice.profile .soon').count() === 0, 'no business type at sign-up waits for a module')
 const salonCard = (await p.getByRole('button', { name: /^Salon & barber/ }).innerText()).replace(/\n/g, ' ')

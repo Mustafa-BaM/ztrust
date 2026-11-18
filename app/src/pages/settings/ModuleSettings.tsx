@@ -1,4 +1,5 @@
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { Copy, Plus, QrCode, Trash2 } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useCallback, useEffect, useState } from 'react'
 import { Modal } from '../../components/ui'
 import { useT } from '../../lib/i18n'
@@ -20,16 +21,24 @@ export function ModuleSettings() {
     scale_prefix: st.scale_prefix ?? '20', scale_plu_len: String(st.scale_plu_len ?? 5), scale_mode: st.scale_mode ?? 'weight',
     loyalty_earn: String(st.loyalty_earn ?? 1), loyalty_point_value: num(Math.round(Number(st.loyalty_point_value ?? 0)), d), loyalty_min_points: String(st.loyalty_min_points ?? 0),
     booking_online: Boolean(st.booking_online), booking_slug: (tn as { booking_slug?: string | null }).booking_slug ?? '',
+    gift_card_months: String(st.gift_card_months ?? 0),
+    lat: s.branch?.lat != null ? String(s.branch.lat) : '', lng: s.branch?.lng != null ? String(s.branch.lng) : '', geofence_m: String(s.branch?.geofence_m ?? 150),
   })
+  const slugUsed = s.has('appointments') || s.has('qr_ordering')
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  if (!s.has('weighed') && !s.has('loyalty') && !s.has('appointments')) return null
+  if (!s.has('weighed') && !s.has('loyalty') && !slugUsed && !s.has('gift_cards') && !s.has('attendance')) return null
   async function save() {
     setMsg(null)
     const settings = { ...st,
       ...(s.has('weighed') ? { scale_prefix: f.scale_prefix, scale_plu_len: Number(f.scale_plu_len) || 5, scale_mode: f.scale_mode } : {}),
       ...(s.has('loyalty') ? { loyalty_earn: Number(f.loyalty_earn) || 0, loyalty_point_value: toMinor(f.loyalty_point_value || '0', d), loyalty_min_points: Number(f.loyalty_min_points) || 0 } : {}),
-      ...(s.has('appointments') ? { booking_online: f.booking_online } : {}) }
-    const { error } = await supabase.from('tenants').update({ settings, ...(s.has('appointments') ? { booking_slug: f.booking_slug.trim().toLowerCase() || null } : {}) }).eq('id', tn.id)
+      ...(s.has('appointments') ? { booking_online: f.booking_online } : {}),
+      ...(s.has('gift_cards') ? { gift_card_months: Number(f.gift_card_months) || 0 } : {}) }
+    const { error } = await supabase.from('tenants').update({ settings, ...(slugUsed ? { booking_slug: f.booking_slug.trim().toLowerCase() || null } : {}) }).eq('id', tn.id)
+    if (!error && s.has('attendance') && s.branch) {
+      const b = await supabase.from('branches').update({ lat: f.lat ? Number(f.lat) : null, lng: f.lng ? Number(f.lng) : null, geofence_m: Number(f.geofence_m) || 150 }).eq('id', s.branch.id)
+      if (b.error) return setMsg({ ok: false, text: b.error.message })
+    }
     setMsg(error ? { ok: false, text: /booking_slug/.test(error.message) ? t('This booking address is taken or invalid. Use 3–40 letters, digits or hyphens.') : error.message } : { ok: true, text: t('Saved') })
     if (!error) await s.reload()
   }
@@ -52,11 +61,24 @@ export function ModuleSettings() {
         <label className="field"><span>{t('Minimum points to redeem')}</span><input id="loy-min" type="number" min={0} value={f.loyalty_min_points} onChange={(e) => setF({ ...f, loyalty_min_points: e.target.value })} /></label>
         <p className="muted small">{t('Points are earned on what the customer pays with money, and taken back on refunds. Redeemed points are booked as a loyalty expense.')}</p>
       </>}
-      {s.has('appointments') && <>
-        <h3 className="span2 sub-h">{t('Online booking')}</h3>
-        <label className="field"><span>{t('Booking page address')}</span><input id="book-slug" placeholder="my-salon" value={f.booking_slug} onChange={(e) => setF({ ...f, booking_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} /></label>
-        <label className="check"><input id="book-online" type="checkbox" checked={f.booking_online} onChange={(e) => setF({ ...f, booking_online: e.target.checked })} />{t('Customers can book online')}</label>
-        {link && <div className="linkbox span2"><code>{link}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(link).catch(() => undefined)}><Copy size={14} />{t('Copy')}</button></div>}
+      {s.has('gift_cards') && <>
+        <h3 className="span2 sub-h">{t('Gift cards')}</h3>
+        <label className="field"><span>{t('Valid for (months, 0 = no expiry)')}</span><input id="gc-months" type="number" min={0} value={f.gift_card_months} onChange={(e) => setF({ ...f, gift_card_months: e.target.value })} /></label>
+        <p className="muted small">{t('Check the rules in your country before setting an expiry.')}</p>
+      </>}
+      {s.has('attendance') && <>
+        <h3 className="span2 sub-h">{t('Attendance: branch location')}</h3>
+        <label className="field"><span>{t('Latitude')}</span><input id="br-lat" inputMode="decimal" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} /></label>
+        <label className="field"><span>{t('Longitude')}</span><input id="br-lng" inputMode="decimal" value={f.lng} onChange={(e) => setF({ ...f, lng: e.target.value })} /></label>
+        <label className="field"><span>{t('Allowed distance (m)')}</span><input id="br-radius" type="number" min={20} value={f.geofence_m} onChange={(e) => setF({ ...f, geofence_m: e.target.value })} /></label>
+        <div><button type="button" className="ghost" onClick={() => navigator.geolocation?.getCurrentPosition((p) => setF({ ...f, lat: p.coords.latitude.toFixed(6), lng: p.coords.longitude.toFixed(6) }))}>{t('Use this device’s location (stand in the branch)')}</button></div>
+        <p className="muted small span2">{t('Staff can clock in only within this distance. Leave empty to allow clocking in from anywhere.')}</p>
+      </>}
+      {slugUsed && <>
+        <h3 className="span2 sub-h">{t(s.has('appointments') ? 'Online booking' : 'Public ordering page')}</h3>
+        <label className="field"><span>{t('Public page address')}</span><input id="book-slug" placeholder="my-salon" value={f.booking_slug} onChange={(e) => setF({ ...f, booking_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} /></label>
+        {s.has('appointments') && <label className="check"><input id="book-online" type="checkbox" checked={f.booking_online} onChange={(e) => setF({ ...f, booking_online: e.target.checked })} />{t('Customers can book online')}</label>}
+        {link && s.has('appointments') && <div className="linkbox span2"><code>{link}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(link).catch(() => undefined)}><Copy size={14} />{t('Copy')}</button></div>}
         <p className="muted small span2">{t('Put this link on Instagram, Google Maps or your website. Customers see your services and free times; staff who take bookings and their hours are set in Staff.')}</p>
       </>}
       <div className="row end span2">{msg && <span className={msg.ok ? 'success' : 'error'}>{msg.text}</span>}<button className="primary" onClick={() => void save()}>{t('Save')}</button></div>
@@ -70,11 +92,13 @@ export function StaffExtras({ m, onSaved }: { m: Membership & { bookable?: boole
   const s = useSession()
   const [hours, setHours] = useState(false)
   const [bookable, setBookable] = useState(Boolean(m.bookable))
+  const [driver, setDriver] = useState(Boolean((m as { is_driver?: boolean }).is_driver))
   const set = async (p: Record<string, unknown>) => { await rpc('set_staff_profile', { p_tenant: s.tenant!.id, p_user: m.user_id, p }).catch(() => undefined); onSaved() }
   return (
     <>
       {s.has('appointments') && <td><input aria-label={t('Takes bookings')} type="checkbox" checked={bookable} onChange={(e) => { setBookable(e.target.checked); void set({ bookable: e.target.checked }) }} />
         {bookable && <button className="ghost small" onClick={() => setHours(true)}>{t('Hours')}</button>}</td>}
+      {s.has('own_delivery') && <td><input aria-label={t('Driver')} type="checkbox" checked={driver} onChange={(e) => { setDriver(e.target.checked); void set({ is_driver: e.target.checked }) }} /></td>}
       {s.has('commissions') && <td><input aria-label={t('Commission %')} className="qty-in" inputMode="decimal" defaultValue={m.commission_pct ?? ''} placeholder="0" onBlur={(e) => void set({ commission_pct: e.target.value })} /></td>}
       {hours && <HoursDialog userId={m.user_id} name={m.display_name} onClose={() => setHours(false)} />}
     </>
@@ -122,6 +146,15 @@ export function TablesSetup() {
   const [list, setList] = useState<DiningTable[]>([])
   const [f, setF] = useState({ area: t('Main'), name: '', seats: '4', shape: 'square' })
   const [err, setErr] = useState<string | null>(null)
+  const slug = (s.tenant as { booking_slug?: string | null }).booking_slug ?? null
+  const [qrs, setQrs] = useState<{ name: string; url: string; img: string }[] | null>(null)
+  async function printQr() {
+    const rows = await Promise.all(list.filter((x) => x.is_active).map(async (x) => {
+      const url = `${publicAppUrl}/order/${slug}?t=${x.qr_token}`
+      return { name: x.name, url, img: await QRCode.toDataURL(url, { margin: 1, width: 360 }) }
+    }))
+    setQrs(rows)
+  }
   const load = useCallback(async () => {
     const { data } = await supabase.from('dining_tables').select('*').eq('branch_id', s.branch!.id).order('area').order('name')
     setList((data ?? []) as DiningTable[])
@@ -146,10 +179,17 @@ export function TablesSetup() {
         <button className="primary" disabled={!f.name.trim()}><Plus size={16} />{t('Add')}</button>
       </form>
       {err && <p className="error">{err}</p>}
+      {s.has('qr_ordering') && slug && list.length > 0 && <div className="row"><button onClick={() => void printQr()}><QrCode size={16} />{t('QR codes for all tables')}</button>
+        <a className="button ghost" href={`${publicAppUrl}/order/${slug}?kiosk=1`} target="_blank" rel="noreferrer">{t('Open kiosk')}</a></div>}
+      {qrs && (
+        <Modal title={t('QR codes for the tables')} onClose={() => setQrs(null)} wide>
+          <div className="qr-sheet">{qrs.map((q) => <figure key={q.url}><img src={q.img} alt={q.url} /><figcaption><b>{q.name}</b><span>{t('Scan to order')}</span></figcaption></figure>)}</div>
+          <div className="row end"><button className="primary" onClick={() => window.print()}>{t('Print')}</button></div>
+        </Modal>)}
       <div className="card table-wrap"><table className="list">
-        <thead><tr><th>{t('Area')}</th><th>{t('Table')}</th><th className="num">{t('Seats')}</th><th>{t('Shape')}</th><th /></tr></thead>
+        <thead><tr><th>{t('Area')}</th><th>{t('Table')}</th><th className="num">{t('Seats')}</th><th>{t('Shape')}</th>{s.has('qr_ordering') && <th>{t('QR ordering')}</th>}<th /></tr></thead>
         <tbody>{list.map((x) => (
-          <tr key={x.id}><td>{x.area}</td><td><b>{x.name}</b></td><td className="num">{x.seats}</td><td>{t(x.shape === 'square' ? 'Square' : x.shape === 'round' ? 'Round' : 'Long')}</td>
+          <tr key={x.id}><td>{x.area}</td><td><b>{x.name}</b></td><td className="num">{x.seats}</td><td>{t(x.shape === 'square' ? 'Square' : x.shape === 'round' ? 'Round' : 'Long')}</td>{s.has('qr_ordering') && <td>{slug ? <a className="small" href={`${publicAppUrl}/order/${slug}?t=${x.qr_token}`} target="_blank" rel="noreferrer">{t('Open')}</a> : <span className="muted small">{t('Set the public page address first')}</span>}</td>}
             <td><button className="ghost small danger" aria-label={t('Delete')} onClick={() => void supabase.from('dining_tables').update({ is_active: !x.is_active }).eq('id', x.id).then(load)}>{x.is_active ? <Trash2 size={14} /> : t('Restore')}</button></td></tr>))}</tbody>
       </table></div>
     </section>

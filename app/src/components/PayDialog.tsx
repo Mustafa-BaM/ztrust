@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../lib/i18n'
 import { fmt, num, toMinor } from '../lib/money'
+import { rpc } from '../lib/supabase'
 import type { Customer, Tenant, Tender, TenderEntry } from '../lib/types'
 import { tenderLabel } from './Receipt'
 import { Modal } from './ui'
@@ -20,16 +21,19 @@ function quickCash(due: number, decimals: number): number[] {
  * Split payment: any number of tenders until the remaining amount is zero.
  * Cash may be over-tendered; the difference is change. On account, payment link and store credit need a customer.
  */
-export function PayDialog({ total, tenant, customer, online, channels = [], points = null, onClose, onConfirm, onPickCustomer }: {
+export function PayDialog({ total, tenant, customer, online, channels = [], points = null, cod = false, giftCards = false, onClose, onConfirm, onPickCustomer }: {
   total: number; tenant: Tenant; customer: Customer | null; online: boolean; channels?: { id: string; display_name: string }[]
   /** the customer's loyalty points (null = loyalty off or no customer) */
   points?: number | null
+  /** own delivery: the driver collects cash on delivery */
+  cod?: boolean
+  giftCards?: boolean
   onClose: () => void; onConfirm: (t: TenderEntry[], change: number) => void; onPickCustomer: () => void
 }) {
   const { t, lang } = useT()
   const pv = Number(tenant.settings?.loyalty_point_value ?? 0), minPts = Number(tenant.settings?.loyalty_min_points ?? 0)
   const pointsValue = points != null && pv > 0 ? Math.floor(points * pv) : 0
-  const tenders: Tender[] = [...TENDERS.filter((x) => x !== 'on_account' || tenant.features?.credit), ...(points != null && pv > 0 ? ['loyalty' as Tender] : [])]
+  const tenders: Tender[] = [...TENDERS.filter((x) => x !== 'on_account' || tenant.features?.credit), ...(points != null && pv > 0 ? ['loyalty' as Tender] : []), ...(giftCards ? ['gift_card' as Tender] : []), ...(cod ? ['cod' as Tender] : [])]
   const d = tenant.currency_decimals
   const [entries, setEntries] = useState<TenderEntry[]>([])
   const [tender, setTender] = useState<Tender>('cash')
@@ -49,6 +53,15 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
   }, [remaining, entries, change, onConfirm])
 
   const needsCustomer = (x: Tender) => x === 'on_account' || x === 'payment_link' || x === 'store_credit'
+  const [giftBal, setGiftBal] = useState<string | null>(null)
+  async function checkGift() {
+    if (!ref.trim()) return setGiftBal(null)
+    try {
+      const r = await rpc<{ balance: number; status: string; expires_on: string | null } | null>('gift_card_check', { p_tenant: tenant.id, p_code: ref })
+      setGiftBal(r ? (r.status === 'active' ? t('Balance {v}', { v: fmt(r.balance, tenant, lang) }) : t('This card is not active')) : t('Card not found'))
+      if (r && r.status === 'active') setAmount(num(Math.min(r.balance, Math.max(remaining, 0)), d))
+    } catch { setGiftBal(null) }
+  }
   const usedPts = entries.filter((e) => e.tender === 'loyalty').reduce((a, e) => a + e.amount, 0)
   const disabled = (x: Tender) => (needsCustomer(x) && !customer) || (x === 'payment_link' && !online) || (x === 'loyalty' && (!online || (points ?? 0) < Math.max(minPts, 1) || pointsValue - usedPts <= 0))
   const suggestions = useMemo(() => quickCash(Math.max(remaining, 0), d), [remaining, d])
@@ -61,6 +74,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
       setEntries([...entries, { tender: 'cash', amount: remaining }])
     } else {
       if (tender === 'platform' && !channel) return
+      if (tender === 'gift_card' && !ref.trim()) return
       const cap = tender === 'loyalty' ? Math.min(v, remaining, pointsValue - usedPts) : Math.min(v, remaining)
       setEntries([...entries, { tender, amount: cap, reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined }])
     }
@@ -98,6 +112,10 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
             {tender === 'platform' && (
               <label className="field"><span>{t('Platform order number')}</span><input id="pay-ext" value={ref} onChange={(e) => setRef(e.target.value)} /></label>
             )}
+            {tender === 'gift_card' && (
+              <label className="field"><span>{t('Gift card code')}</span><input id="pay-gift" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} onBlur={() => void checkGift()} /></label>
+            )}
+            {tender === 'gift_card' && giftBal && <p className="muted small span2">{giftBal}</p>}
             {(tender === 'card' || tender === 'bank_transfer') && (
               <label className="field"><span>{t('Reference (approval code)')}</span><input id="pay-ref" value={ref} onChange={(e) => setRef(e.target.value)} /></label>
             )}

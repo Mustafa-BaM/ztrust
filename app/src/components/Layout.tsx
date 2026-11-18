@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenCheck, Boxes, CalendarDays, ChefHat, ClipboardList, Tag, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Bike, BookOpenCheck, Boxes, CalendarClock, CalendarDays, ChefHat, ClipboardList, Fingerprint, Tag, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { configureHub, hubSettings, useHub } from '../lib/hub'
@@ -9,7 +9,7 @@ import { Logo } from './ui'
 
 const TITLES: Record<string, string> = {
   '/pos': 'Sell', '/dashboard': 'Dashboard', '/sales': 'Sales', '/kds': 'Kitchen', '/shift': 'Shift', '/products': 'Products',
-  '/purchasing': 'Purchasing', '/calendar': 'Calendar', '/orders': 'Orders', '/promotions': 'Promotions', '/inventory': 'Inventory', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
+  '/purchasing': 'Purchasing', '/calendar': 'Calendar', '/orders': 'Orders', '/promotions': 'Promotions', '/reservations': 'Reservations', '/deliveries': 'Deliveries', '/attendance': 'Attendance', '/inventory': 'Inventory', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
 }
 
 /** Dark icon rail + slim top bar: the POS keeps almost the whole screen. */
@@ -30,6 +30,8 @@ export default function Layout() {
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: any('sale.create', 'reports.all', 'inventory.view', 'finance.view') },
     { to: '/sales', label: 'Sales', icon: Receipt, show: any('sale.create', 'reports.all') },
     { to: '/calendar', label: 'Calendar', icon: CalendarDays, show: s.has('appointments') && s.can('sale.create') },
+    { to: '/reservations', label: 'Reservations', icon: CalendarClock, show: s.has('reservations') && s.can('sale.create') },
+    { to: '/deliveries', label: 'Deliveries', icon: Bike, show: s.has('own_delivery') && (s.can('sale.create') || Boolean((s.member as { is_driver?: boolean } | null)?.is_driver)) },
     { to: '/orders', label: 'Orders', icon: ClipboardList, show: (s.has('job_cards') || s.has('preorders')) && s.can('sale.create') },
     { to: '/kds', label: 'Kitchen', icon: ChefHat, show: s.can('kds.view') && s.has('kitchen') },
     { to: '/shift', label: 'Shift', icon: Clock3, show: s.can('sale.create') },
@@ -40,6 +42,7 @@ export default function Layout() {
     { to: '/customers', label: 'Customers', icon: Users, show: any('sale.create', 'customers.manage') },
     { to: '/accounting', label: 'Accounting', icon: BookOpenCheck, show: any('finance.view', 'finance.journal', 'expenses.create', 'payables.pay') },
     { to: '/reports', label: 'Reports', icon: BarChart3, show: s.can('reports.all') },
+    { to: '/attendance', label: 'Attendance', icon: Fingerprint, show: s.has('attendance') },
     { to: '/settings', label: 'Settings', icon: Settings, show: s.role === 'owner' || any('staff.manage', 'settings.manage') },
   ]
   const title = TITLES[loc.pathname] ?? ''

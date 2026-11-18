@@ -4,6 +4,7 @@ import { Empty, Modal, useApproval } from '../components/ui'
 import { useT } from '../lib/i18n'
 import { fmt, num } from '../lib/money'
 import { parseError } from '../lib/supabase'
+import { Production, Transfers } from './inventory/Moves'
 import { downloadCsv } from '../lib/reports'
 import { useSession } from '../lib/session'
 import { norm } from '../lib/shift'
@@ -22,7 +23,7 @@ export default function Inventory() {
   const s = useSession()
   const tn = s.tenant!
   const d = tn.currency_decimals
-  const [tab, setTab] = useState<'stock' | 'card' | 'count' | 'expiry'>('stock')
+  const [tab, setTab] = useState<'stock' | 'card' | 'count' | 'expiry' | 'transfers' | 'production'>('stock')
   const [batches, setBatches] = useState<Batch[]>([])
   const [writeOff, setWriteOff] = useState<Batch | null>(null)
   const [rows, setRows] = useState<Row[]>([])
@@ -80,6 +81,8 @@ export default function Inventory() {
         <button className={tab === 'card' ? 'on' : ''} onClick={() => setTab('card')}>{t('Stock card')}</button>
         {s.can('inventory.adjust') && <button className={tab === 'count' ? 'on' : ''} onClick={() => setTab('count')}>{t('Stock count')}</button>}
         {s.has('batches') && <button className={tab === 'expiry' ? 'on' : ''} onClick={() => setTab('expiry')}>{t('Expiry')}</button>}
+        {s.has('transfers') && <button className={tab === 'transfers' ? 'on' : ''} onClick={() => setTab('transfers')}>{t('Transfers')}</button>}
+        {s.has('production') && s.can('inventory.adjust') && <button className={tab === 'production' ? 'on' : ''} onClick={() => setTab('production')}>{t('Production')}</button>}
       </div>
 
       {tab === 'stock' && (
@@ -181,6 +184,8 @@ export default function Inventory() {
           </>
         )
       })()}
+      {tab === 'transfers' && <Transfers />}
+      {tab === 'production' && <Production />}
       {approval.dialog}
     </div>
   )

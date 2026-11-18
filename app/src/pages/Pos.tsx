@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Banknote, ChefHat, CreditCard, Gift, Hand, Keyboard, LayoutGrid, Minus, PauseCircle, Plus, Save, ScanLine, Search, Tag, Ticket, UserRound, UsersRound, X } from 'lucide-react'
+import { Banknote, Bike, ChefHat, CreditCard, Gift, Hand, Inbox, Keyboard, LayoutGrid, Minus, MonitorSmartphone, PauseCircle, Plus, Save, ScanLine, Search, Tag, Ticket, UserRound, UsersRound, X } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CustomerPicker } from '../components/CustomerPicker'
 import { PayDialog } from '../components/PayDialog'
 import { ModifierDialog, StaffPicker, TablesDialog, VariantPicker } from '../components/pos/Dialogs'
+import { DeliveryDialog, GiftCardDialog, IncomingOrders, type DeliveryInfo } from '../components/pos/Growth'
 import { PrintReceipt, Receipt, type ReceiptData } from '../components/Receipt'
 import { ApprovalDialog, Modal, useApproval } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
@@ -14,14 +15,14 @@ import { applyPromotions } from '../lib/promotions'
 import { useSession } from '../lib/session'
 import { getShift, norm } from '../lib/shift'
 import { parseError, publicAppUrl, rpc, supabase, uuid } from '../lib/supabase'
-import type { CartLine, Customer, CustomerPackage, DiningTable, Item, ModifierOption, OpenOrder, Sale, TenderEntry } from '../lib/types'
+import type { CartLine, Customer, CustomerPackage, DiningTable, Item, ModifierOption, OnlineOrder, OpenOrder, Sale, TenderEntry } from '../lib/types'
 
 type Mode = 'touch' | 'keys'
 type Held = { id: string; at: string; lines: CartLine[]; customer: Customer | null }
 /** Checkout handed over from another screen (calendar, job card, table) */
 export interface CheckoutContext {
   lines: CartLine[]; customer: Customer | null; label?: string
-  appointment_id?: string; work_order_id?: string; deposit?: number; open_order_id?: string; table?: DiningTable | null
+  appointment_id?: string; work_order_id?: string; deposit?: number; open_order_id?: string; table?: DiningTable | null; online_order_id?: string
 }
 const ls = {
   get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : d } catch { return d } },
@@ -47,7 +48,7 @@ export default function Pos() {
   const [lines, setLines] = useState<CartLine[]>([])
   const [sel, setSel] = useState(0)
   const [customer, setCustomer] = useState<Customer | null>(null)
-  const [dialog, setDialog] = useState<null | 'pay' | 'customer' | 'qty' | 'discount' | 'held' | 'coupon' | 'staff' | 'tables'>(null)
+  const [dialog, setDialog] = useState<null | 'pay' | 'customer' | 'qty' | 'discount' | 'held' | 'coupon' | 'staff' | 'tables' | 'delivery' | 'incoming'>(null)
   const [held, setHeld] = useState<Held[]>(() => ls.get<Held[]>('zt.held', []))
   const [done, setDone] = useState<null | { receipt: ReceiptData; links: { token: string; amount: number }[] }>(null)
   const [printing, setPrinting] = useState<ReceiptData | null>(null)
@@ -65,6 +66,9 @@ export default function Pos() {
   const [points, setPoints] = useState<number | null>(null)
   const [splitKeys, setSplitKeys] = useState<string[] | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [giftFor, setGiftFor] = useState<Item | null>(null)
+  const [delivery, setDelivery] = useState<DeliveryInfo | null>(null)
+  const [incoming, setIncoming] = useState<OnlineOrder[]>([])
   const approval = useApproval()
   const search = useRef<HTMLInputElement>(null)
 
@@ -84,7 +88,7 @@ export default function Pos() {
         s.has('modifiers') ? supabase.from('modifier_options').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort') : none,
         s.has('modifiers') ? supabase.from('item_modifier_groups').select('item_id, group_id, sort').eq('tenant_id', tenant.id) : none,
         s.has('promotions') ? supabase.from('promotions').select('*').eq('tenant_id', tenant.id).eq('is_active', true) : none,
-        supabase.from('memberships').select('user_id, display_name, bookable, color').eq('tenant_id', tenant.id).eq('is_active', true).order('display_name'),
+        supabase.from('memberships').select('user_id, display_name, bookable, color, is_driver').eq('tenant_id', tenant.id).eq('is_active', true).order('display_name'),
       ]).then(([i, c, cu, ks, dc, mg, mo, ig, pr, sf]) => {
         if (i.error || !live) return
         const next = {
@@ -115,6 +119,23 @@ export default function Pos() {
     if (s.has('memberships')) void supabase.from('customer_packages').select('*').eq('customer_id', customer.id).eq('status', 'active').then(({ data }) => setPkgs((data ?? []) as CustomerPackage[]))
     if (s.has('loyalty')) void rpc<number>('customer_points', { p_customer: customer.id }).then(setPoints).catch(() => setPoints(null))
   }, [customer, online, s])
+
+  // QR / kiosk orders waiting for staff
+  const loadIncoming = useCallback(async () => {
+    if (!s.has('qr_ordering') || !s.branch || !online) return
+    const { data } = await supabase.from('online_orders').select('*').eq('branch_id', s.branch.id).in('status', ['pending', 'accepted']).is('sale_id', null).order('created_at')
+    setIncoming(((data ?? []) as OnlineOrder[]).filter((o) => o.status === 'pending' || o.source === 'kiosk'))
+  }, [s, online])
+  useEffect(() => { void loadIncoming(); const id = window.setInterval(() => void loadIncoming(), 10_000); return () => clearInterval(id) }, [loadIncoming])
+  function payKiosk(o: OnlineOrder) {
+    const cl: CartLine[] = o.lines.map((l) => {
+      const it = items.find((x) => x.id === l.item_id)
+      const mods = (catalog?.modOptions ?? []).filter((m) => (l.modifiers ?? []).includes(m.id))
+      return { key: l.key, item_id: l.item_id, name: it?.name ?? l.name, name_ar: it?.name_ar ?? null, qty: Number(l.qty), unit_price: Number(l.unit_price), list_price: Number(l.unit_price),
+               discount: 0, tax_rate: it?.tax_rate ?? tenant.vat_rate, note: l.note ?? undefined, modifiers: mods.map((m) => ({ id: m.id, name: m.name, name_ar: m.name_ar, price: m.price })) }
+    })
+    setDialog(null); setCtx({ lines: cl, customer: null, online_order_id: o.id, label: `${t('Kiosk')} #${o.number}` }); setLines(cl); setSel(0)
+  }
 
   useEffect(() => ls.set('zt.posmode', mode), [mode])
   useEffect(() => ls.set('zt.held', held), [held])
@@ -153,6 +174,7 @@ export default function Pos() {
 
   /** tap or scan: variants → choose size/colour, add-ons → choose options, sold by weight → enter the weight */
   const add = useCallback((i: Item, qty?: number) => {
+    if (i.item_type === 'gift_card') return setGiftFor(i)
     if (i.is_template) return setVariantOf(i)
     if (s.has('modifiers') && groupsOf(i.id).length) return setModFor(i)
     if (i.sold_by_weight && qty == null) return setWeighFor(i)
@@ -180,17 +202,27 @@ export default function Pos() {
   }
 
   const setQty = (idx: number, qty: number) => setLines((cur) => qty <= 0 ? cur.filter((_, i) => i !== idx) : cur.map((l, i) => (i === idx ? { ...l, qty } : l)))
-  const clear = () => { setLines([]); setCustomer(null); setSel(0); setTable(''); setCtx(null); setCoupon(null); setSplitKeys(null); setMsg(null) }
+  const clear = () => { setLines([]); setCustomer(null); setSel(0); setTable(''); setCtx(null); setCoupon(null); setSplitKeys(null); setMsg(null); setDelivery(null) }
   const hasKitchen = s.has('kitchen') && (catalog?.stations ?? 0) > 0
   const hub = useHub()
   const showImages = Boolean(st.pos_show_images)
-  const isTable = Boolean(ctx?.open_order_id || ctx?.table || (ctx?.label && !ctx.appointment_id && !ctx.work_order_id))
+  const isTable = Boolean(ctx?.open_order_id || ctx?.table || (ctx?.label && !ctx.appointment_id && !ctx.work_order_id && !ctx.online_order_id))
   const usesStaff = s.has('commissions') || s.has('appointments')
+
+  // ---- customer display (a second window or screen on this device)
+  useEffect(() => {
+    if (!s.has('customer_display') || typeof BroadcastChannel === 'undefined') return
+    const ch = new BroadcastChannel(`zt-display-${tenant.id}`)
+    ch.postMessage({ type: 'cart', business: lang === 'ar' && tenant.name_ar ? tenant.name_ar : tenant.name, logo: tenant.logo_url, currency: tenant.currency, decimals: d, lang,
+      lines: payLines.map((l) => ({ name: lineName(l), qty: l.qty, total: calcLine(l, tenant.prices_include_tax).total, promo: l.promo_discount ? l.promo_name : null })),
+      promo: totals.promo, tax: totals.tax, total: totals.total, due, customer: customer?.name ?? null, points })
+    ch.close()
+  })
 
   // ---- keyboard mode shortcuts
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (dialog || done || approval.dialog || preApproval || noteFor !== null || variantOf || modFor || weighFor) return
+      if (dialog || done || approval.dialog || preApproval || noteFor !== null || variantOf || modFor || weighFor || giftFor) return
       const map: Record<string, () => void> = {
         F2: () => search.current?.focus(),
         F3: () => setDialog('customer'),
@@ -211,7 +243,7 @@ export default function Pos() {
     }
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
-  }, [dialog, done, lines, sel, approval.dialog, preApproval, noteFor, variantOf, modFor, weighFor])
+  }, [dialog, done, lines, sel, approval.dialog, preApproval, noteFor, variantOf, modFor, weighFor, giftFor])
 
   // ---- package sessions on a service line
   const pkgFor = (l: CartLine) => pkgs.find((p) => p.kind === 'sessions' && (p.sessions_total ?? 0) - p.sessions_used >= l.qty && (!p.covers || (l.item_id && p.covers.includes(l.item_id))))
@@ -256,13 +288,15 @@ export default function Pos() {
       tenant_id: tenant.id, branch_id: s.branch!.id, shift_id: shiftId, client_id: uuid(), customer_id: customer?.id ?? null,
       device_created_at: new Date().toISOString(), approver_pin: pin ?? null, coupon,
       lines: payLines.map((l) => ({ item_id: l.item_id, name: l.item_id ? null : l.name, qty: l.qty, unit_price: l.unit_price, discount: l.discount, note: l.note ?? null,
-        modifiers: (l.modifiers ?? []).map((m) => m.id), staff_id: l.staff_id ?? null, promo_discount: l.promo_discount ?? 0, customer_package_id: l.customer_package_id ?? null })),
+        modifiers: (l.modifiers ?? []).map((m) => m.id), staff_id: l.staff_id ?? null, promo_discount: l.promo_discount ?? 0, customer_package_id: l.customer_package_id ?? null, gift_code: l.gift_code ?? null })),
       kitchen: hasKitchen && !ctx?.open_order_id ? { order_type: tenders.some((x) => x.tender === 'platform') ? 'delivery' : orderType, table_no: orderType === 'dine_in' ? table : null, hub: hubConnected() } : null,
       payments: tenders.map((x) => ({ tender: x.tender, amount: x.amount, reference: x.reference ?? null })),
       channel_id: tenders.find((x) => x.tender === 'platform')?.channel_id ?? null,
       external_ref: tenders.find((x) => x.tender === 'platform')?.reference ?? null,
       appointment_id: ctx?.appointment_id ?? null, work_order_id: ctx?.work_order_id ?? null,
       open_order_id: ctx?.open_order_id ?? null, open_order_keys: ctx?.open_order_id ? payLines.map((l) => l.key) : undefined,
+      online_order_id: ctx?.online_order_id ?? null,
+      delivery: delivery ? { address: delivery.address, phone: delivery.phone, note: delivery.note, driver_id: delivery.driver_id } : undefined,
     }
   }
 
@@ -308,7 +342,7 @@ export default function Pos() {
     }
     setBusy(true)
     const payload = buildPayload(tenders, pin)
-    const needsServer = Boolean(ctx?.appointment_id || ctx?.work_order_id || ctx?.open_order_id || totals.packages || tenders.some((x) => x.tender === 'loyalty'))
+    const needsServer = Boolean(ctx?.appointment_id || ctx?.work_order_id || ctx?.open_order_id || ctx?.online_order_id || delivery || totals.packages || tenders.some((x) => ['loyalty', 'gift_card', 'cod'].includes(x.tender)) || payLines.some((l) => items.find((i) => i.id === l.item_id)?.item_type === 'gift_card'))
     const offlineSale = async () => {
       if (tenders.some((x) => x.tender === 'payment_link')) { approval.setError(t('Payment links need internet.')); return }
       if (needsServer) { approval.setError(t('This checkout needs internet (package, deposit, points or table).')); return }
@@ -413,8 +447,11 @@ export default function Pos() {
       </section>
 
       <section className="pos-cart">
-        {(hasKitchen || s.has('tables')) && (
+        {(hasKitchen || s.has('tables') || s.has('own_delivery') || s.has('qr_ordering') || s.has('customer_display')) && (
           <div className="order-bar">
+            {s.has('qr_ordering') && <button className={`ghost incoming-btn ${incoming.some((o) => o.status === 'pending') ? 'alert' : ''}`} onClick={() => setDialog('incoming')}><Inbox size={16} aria-hidden="true" />{t('Online orders')}{incoming.length > 0 && <em className="badge">{incoming.length}</em>}</button>}
+            {s.has('own_delivery') && !isTable && <button className={`ghost ${delivery ? 'on' : ''}`} onClick={() => setDialog('delivery')}><Bike size={16} aria-hidden="true" />{delivery ? t('Own delivery ✓') : t('Own delivery')}</button>}
+            {s.has('customer_display') && <button className="icon" title={t('Customer display')} aria-label={t('Customer display')} onClick={() => window.open('/display', 'zt-display', 'width=1024,height=700')}><MonitorSmartphone size={18} /></button>}
             {s.has('tables') && <button className={`ghost tables-btn ${isTable ? 'on' : ''}`} onClick={() => setDialog('tables')}><LayoutGrid size={16} aria-hidden="true" />{isTable ? (ctx?.label ?? t('Table')) : t('Tables')}</button>}
             {hasKitchen && !isTable && (
               <div className="seg" role="group" aria-label={t('Order type')}>
@@ -425,7 +462,7 @@ export default function Pos() {
             {hub.status !== 'off' && <span className={`hub-badge ${hub.status}`} title={t('Branch hub')}>{hub.status === 'connected' ? t('Kitchen via hub') : t('Hub reconnecting…')}</span>}
           </div>
         )}
-        {ctx && (ctx.appointment_id || ctx.work_order_id) && (
+        {ctx && (ctx.appointment_id || ctx.work_order_id || ctx.online_order_id) && (
           <div className="ctx-bar"><Ticket size={15} aria-hidden="true" />{ctx.label}{deposit > 0 && <span className="pill">{t('Deposit')} −{num(deposit, d)}</span>}
             <button className="icon" aria-label={t('Clear')} onClick={clear}><X size={14} /></button></div>)}
         <header className="cart-head">
@@ -511,7 +548,7 @@ export default function Pos() {
       </section>
 
       {dialog === 'pay' && (
-        <PayDialog total={due} tenant={tenant} customer={customer} online={online} channels={catalog?.channels ?? []}
+        <PayDialog total={due} tenant={tenant} customer={customer} online={online} channels={catalog?.channels ?? []} cod={Boolean(delivery)} giftCards={s.has('gift_cards')}
                    points={s.has('loyalty') ? points : null}
                    onClose={() => setDialog(null)} onConfirm={(tn, ch) => void finish(tn, ch)} onPickCustomer={() => setDialog('customer')} />
       )}
@@ -543,6 +580,11 @@ export default function Pos() {
         <TextDialog title={t('Coupon code')} initial={coupon ?? ''} suggestions={[]} onClose={() => setDialog(null)}
           onSave={(v) => { setCoupon(v.trim().toUpperCase() || null); setDialog(null) }} />
       )}
+      {giftFor && <GiftCardDialog item={giftFor} decimals={d} onClose={() => setGiftFor(null)}
+        onAdd={(amount, code) => { const it = giftFor; setGiftFor(null); setLines((cur) => [...cur, { key: uuid(), item_id: it.id, name: it.name, name_ar: it.name_ar, qty: 1, unit_price: amount, list_price: amount, discount: 0, tax_rate: 0, gift_code: code || undefined }]); setSel(lines.length) }} />}
+      {dialog === 'delivery' && <DeliveryDialog customer={customer} drivers={(catalog?.staff ?? []).filter((m) => (m as { is_driver?: boolean }).is_driver)} initial={delivery}
+        onPickCustomer={() => setDialog('customer')} onClose={() => setDialog(null)} onSave={(d2) => { setDelivery(d2); setDialog(null) }} />}
+      {dialog === 'incoming' && <IncomingOrders orders={incoming} tenant={tenant} onClose={() => setDialog(null)} onChanged={() => void loadIncoming()} onPay={payKiosk} />}
       {dialog === 'tables' && <TablesDialog branchId={s.branch.id} tenant={tenant} onClose={() => setDialog(null)} onOpen={openTable} />}
       {dialog === 'held' && (
         <Modal title={t('Held sales')} onClose={() => setDialog(null)}>
