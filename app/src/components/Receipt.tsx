@@ -9,7 +9,7 @@ export interface ReceiptData {
   number: string
   doc_type: 'invoice' | 'credit_note'
   created_at: string
-  lines: { name: string; qty: number; line_total: number }[]
+  lines: { name: string; qty: number; line_total: number; promo?: string }[]
   subtotal: number; tax_total: number; total: number; discount_total: number
   payments: { tender: Tender; amount: number; status?: string }[]
   change?: number
@@ -20,6 +20,8 @@ export interface ReceiptData {
   links?: { token: string; amount: number }[]
   original_number?: string
   reason?: string | null
+  /** paper chosen at print time; default = this device's setting */
+  paper?: '80' | '58' | 'a4'
 }
 
 /** ZATCA simplified-invoice QR payload (TLV, base64): seller, VAT no., timestamp, total, VAT. Phase 2 signing is server-side and not in this MVP. */
@@ -33,8 +35,8 @@ function zatcaTlv(seller: string, vatNo: string, iso: string, total: string, vat
   return btoa(String.fromCharCode(...all))
 }
 
-const TENDER_AR: Record<string, string> = { platform: 'منصة توصيل', cash: 'نقدي', card: 'بطاقة', on_account: 'آجل', payment_link: 'رابط دفع', bank_transfer: 'تحويل', store_credit: 'رصيد', other: 'أخرى' }
-const TENDER_EN: Record<string, string> = { platform: 'Delivery platform', cash: 'Cash', card: 'Card', on_account: 'On account', payment_link: 'Payment link', bank_transfer: 'Bank transfer', store_credit: 'Store credit', other: 'Other' }
+const TENDER_AR: Record<string, string> = { loyalty: 'نقاط الولاء', package: 'من الباقة', deposit: 'العربون', platform: 'منصة توصيل', cash: 'نقدي', card: 'بطاقة', on_account: 'آجل', payment_link: 'رابط دفع', bank_transfer: 'تحويل', store_credit: 'رصيد', other: 'أخرى' }
+const TENDER_EN: Record<string, string> = { loyalty: 'Loyalty points', package: 'From package', deposit: 'Deposit', platform: 'Delivery platform', cash: 'Cash', card: 'Card', on_account: 'On account', payment_link: 'Payment link', bank_transfer: 'Bank transfer', store_credit: 'Store credit', other: 'Other' }
 
 /** Bilingual thermal receipt (58/80 mm). Printing goes through the OS print dialog, so any installed printer works. */
 export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: Tenant; branch: Branch | null }) {
@@ -47,8 +49,9 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
     QRCode.toDataURL(payload, { margin: 0, width: 160 }).then(setQr).catch(() => setQr(null))
   }, [tenant, data, d])
   const isCn = data.doc_type === 'credit_note'
+  if (data.paper === 'a4') return <A4Invoice data={data} tenant={tenant} branch={branch} qr={qr} />
   return (
-    <div className="receipt">
+    <div className={`receipt rf-${st.receipt_font_size ?? 'm'}`} style={{ fontFamily: fontStack(st.receipt_font) }}>
       <div className="r-center">
         {st.logo_show !== false && (st.logo_mono_url || tenant.logo_url) && (
           <img className={`r-logo r-logo-${st.logo_size ?? 'm'}`} src={st.logo_mono_url || tenant.logo_url!} alt="" />
@@ -72,7 +75,7 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
       {data.cashier && <div className="r-row"><span>Cashier / الكاشير</span><span>{data.cashier}</span></div>}
       <hr />
       {data.lines.map((l, i) => (
-        <div key={i} className="r-line"><span>{l.name}</span><span>{Number(l.qty)} ×</span><span>{num(l.line_total, d)}</span></div>
+        <div key={i} className="r-line"><span>{l.name}{l.promo && <small className="r-promo"> · {l.promo}</small>}</span><span>{Number(l.qty)} ×</span><span>{num(l.line_total, d)}</span></div>
       ))}
       <hr />
       {data.discount_total > 0 && <div className="r-row"><span>Discount / الخصم</span><span>{num(data.discount_total, d)}</span></div>}
@@ -95,15 +98,76 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
 /** Prints a receipt by rendering it into the print-only container and opening the system print dialog. */
 export function PrintReceipt({ data, tenant, branch, onDone }: { data: ReceiptData; tenant: Tenant; branch: Branch | null; onDone: () => void }) {
   const { t } = useT()
-  const [width] = useState(() => { try { return localStorage.getItem('zt.paper') || '80' } catch { return '80' } })
+  const [width] = useState(() => data.paper ?? (() => { try { return localStorage.getItem('zt.paper') || '80' } catch { return '80' } })())
   useEffect(() => {
     document.documentElement.dataset.paper = width
+    // the page size follows the chosen paper (Chrome, Edge and Firefox use it; Safari prints with its own page setup)
+    const style = document.createElement('style')
+    style.textContent = width === 'a4' ? '@page { size: A4; margin: 12mm }' : `@page { size: ${width}mm auto; margin: 0 }`
+    document.head.appendChild(style)
     const after = () => onDone()
     window.addEventListener('afterprint', after)
     const id = window.setTimeout(() => window.print(), 250)
-    return () => { clearTimeout(id); window.removeEventListener('afterprint', after) }
+    return () => { clearTimeout(id); window.removeEventListener('afterprint', after); style.remove() }
   }, [onDone, width])
   return createPortal(<div id="print-root" aria-label={t('Receipt')}><Receipt data={data} tenant={tenant} branch={branch} /></div>, document.body)
 }
 
 export const tenderLabel = (tender: string, lang: string) => (lang === 'ar' ? TENDER_AR[tender] : TENDER_EN[tender]) ?? tender
+
+/** Receipt fonts. Arabic-capable families are loaded from Google Fonts (and cached for offline use by the app). */
+export const RECEIPT_FONTS: { key: string; label: string; stack: string }[] = [
+  { key: 'plex-mono', label: 'IBM Plex Mono', stack: '"IBM Plex Mono", "IBM Plex Sans Arabic", ui-monospace, monospace' },
+  { key: 'plex-arabic', label: 'IBM Plex Sans Arabic', stack: '"IBM Plex Sans Arabic", system-ui, sans-serif' },
+  { key: 'cairo', label: 'Cairo', stack: 'Cairo, "IBM Plex Sans Arabic", system-ui, sans-serif' },
+  { key: 'tajawal', label: 'Tajawal', stack: 'Tajawal, "IBM Plex Sans Arabic", system-ui, sans-serif' },
+  { key: 'naskh', label: 'Noto Naskh Arabic', stack: '"Noto Naskh Arabic", "IBM Plex Sans Arabic", serif' },
+  { key: 'courier', label: 'Courier (printer style)', stack: '"Courier New", Courier, "IBM Plex Sans Arabic", monospace' },
+]
+export const fontStack = (key?: string) => (RECEIPT_FONTS.find((f) => f.key === key) ?? RECEIPT_FONTS[0]).stack
+
+/** A4 tax invoice: the same document as the thermal receipt, laid out for a laser printer or a PDF. */
+function A4Invoice({ data, tenant, branch, qr }: { data: ReceiptData; tenant: Tenant; branch: Branch | null; qr: string | null }) {
+  const d = tenant.currency_decimals
+  const st = tenant.settings ?? {}
+  const isCn = data.doc_type === 'credit_note'
+  return (
+    <div className="a4" style={{ fontFamily: fontStack(!st.receipt_font || st.receipt_font === 'plex-mono' || st.receipt_font === 'courier' ? 'plex-arabic' : st.receipt_font) }}>
+      <header className="a4-head">
+        <div className="a4-from">
+          {st.logo_show !== false && tenant.logo_url && <img className="a4-logo" src={tenant.logo_url} alt="" />}
+          <div><strong>{tenant.name}</strong>{tenant.name_ar && <div dir="rtl">{tenant.name_ar}</div>}
+            {branch && <div>{branch.name}</div>}{st.receipt_address && <div className="r-pre">{st.receipt_address}</div>}
+            {st.receipt_phones && <div>☎ {st.receipt_phones}</div>}{st.receipt_cr && <div>CR / س.ت: {st.receipt_cr}</div>}
+            {tenant.tax_number && <div>VAT / الرقم الضريبي: {tenant.tax_number}</div>}</div>
+        </div>
+        <div className="a4-title">
+          <h1>{isCn ? 'CREDIT NOTE · إشعار دائن' : tenant.tax_number ? 'TAX INVOICE · فاتورة ضريبية' : 'INVOICE · فاتورة'}</h1>
+          <table><tbody>
+            <tr><th>No. / الرقم</th><td>{data.number}</td></tr>
+            <tr><th>Date / التاريخ</th><td>{new Date(data.created_at).toLocaleString('en-GB')}</td></tr>
+            {data.original_number && <tr><th>Ref / مرجع</th><td>{data.original_number}</td></tr>}
+            {data.cashier && <tr><th>Cashier / الكاشير</th><td>{data.cashier}</td></tr>}
+          </tbody></table>
+        </div>
+      </header>
+      {data.customer && <section className="a4-to"><b>Bill to / العميل</b><div>{data.customer.name}</div>{data.customer.phone && <div>{data.customer.phone}</div>}</section>}
+      <table className="a4-lines">
+        <thead><tr><th>#</th><th>Item / الصنف</th><th className="num">Qty / الكمية</th><th className="num">Amount / المبلغ ({tenant.currency})</th></tr></thead>
+        <tbody>{data.lines.map((l, i) => <tr key={i}><td>{i + 1}</td><td>{l.name}{l.promo && <small className="r-promo"> · {l.promo}</small>}</td><td className="num">{Number(l.qty)}</td><td className="num">{num(l.line_total, d)}</td></tr>)}</tbody>
+      </table>
+      <div className="a4-bottom">
+        <div>{qr && <img src={qr} alt="ZATCA QR" width={120} height={120} />}
+          {data.payments.map((p, i) => <div key={i} className="small">{TENDER_EN[p.tender]} / {TENDER_AR[p.tender]}: {num(Math.abs(p.amount), d)}</div>)}</div>
+        <table className="a4-totals"><tbody>
+          {data.discount_total > 0 && <tr><th>Discount / الخصم</th><td>{num(data.discount_total, d)}</td></tr>}
+          <tr><th>Subtotal excl. VAT / المجموع قبل الضريبة</th><td>{num(data.subtotal, d)}</td></tr>
+          <tr><th>VAT / الضريبة</th><td>{num(data.tax_total, d)}</td></tr>
+          <tr className="grand"><th>TOTAL / الإجمالي {tenant.currency}</th><td>{num(data.total, d)}</td></tr>
+        </tbody></table>
+      </div>
+      {st.receipt_terms && <footer className="a4-terms r-pre">{st.receipt_terms}</footer>}
+      <p className="a4-thanks">{st.receipt_footer || 'شكراً لزيارتكم · Thank you'}{st.receipt_website ? ` · ${st.receipt_website}` : ''}</p>
+    </div>
+  )
+}

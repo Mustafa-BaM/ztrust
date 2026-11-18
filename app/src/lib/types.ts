@@ -1,7 +1,7 @@
 /** Role package key (system templates or custom packages created by the owner). */
 export type Role = string
 export type BusinessType = 'retail' | 'food' | 'services' | 'mixed'
-export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'platform' | 'other'
+export type Tender = 'cash' | 'card' | 'on_account' | 'payment_link' | 'bank_transfer' | 'store_credit' | 'platform' | 'loyalty' | 'package' | 'deposit' | 'other'
 
 export interface Country {
   code: string; name_en: string; name_ar: string; currency: string; currency_decimals: number
@@ -23,9 +23,30 @@ export interface TenantSettings {
   receipt_phones?: string; receipt_address?: string; receipt_cr?: string; receipt_website?: string
   receipt_header?: string; receipt_footer?: string; receipt_terms?: string
   logo_show?: boolean; logo_size?: 's' | 'm' | 'l'; logo_mono_url?: string
+  receipt_font?: string; receipt_font_size?: 's' | 'm' | 'l'
+  scale_prefix?: string; scale_plu_len?: number; scale_mode?: 'weight' | 'price'
+  loyalty_earn?: number; loyalty_point_value?: number; loyalty_min_points?: number
+  booking_online?: boolean; booking_step?: number
 }
 
-export interface FeatureModule { key: string; name_en: string; name_ar: string; built: boolean; sort: number }
+export interface ModifierGroup { id: string; name: string; name_ar: string | null; min_select: number; max_select: number; sort: number }
+export interface ModifierOption { id: string; group_id: string; name: string; name_ar: string | null; price: number; item_id: string | null; qty: number; is_active: boolean; sort: number }
+export interface Promotion {
+  id: string; name: string; name_ar: string | null; kind: 'percent' | 'amount' | 'bxgy' | 'bundle'
+  params: { percent?: number; amount?: number; min_amount?: number; buy?: number; get?: number; price?: number; components?: { item_id: string; qty: number }[] }
+  item_ids: string[] | null; category_ids: string[] | null; min_qty: number; coupon_code: string | null
+  starts_on: string | null; ends_on: string | null; weekdays: number[] | null; time_from: string | null; time_to: string | null; is_active: boolean
+}
+export interface CustomerPackage { id: string; customer_id: string; item_id: string; name: string; kind: string; sessions_total: number | null; sessions_used: number; price_paid: number; released: number; covers: string[] | null; expires_on: string; status: string }
+export interface WorkOrder {
+  id: string; branch_id: string; kind: 'job' | 'preorder'; number: string; customer_id: string | null; status: 'received' | 'in_progress' | 'ready' | 'collected' | 'cancelled'
+  due_at: string | null; reference: string | null; tags: string | null; note: string | null; lines: { item_id: string; name: string; name_ar: string | null; qty: number; unit_price: number; note: string | null }[]
+  total: number; deposit_paid: number; deposit_used: number; sale_id: string | null; created_at: string; ready_at: string | null
+}
+export interface OpenOrder { id: string; branch_id: string; table_id: string | null; label: string; guests: number | null; customer_id: string | null; lines: (CartLine & { modifiers?: string[]; modifier_names?: string | null })[]; status: string; opened_at: string }
+export interface DiningTable { id: string; branch_id: string; area: string; name: string; seats: number; x: number; y: number; shape: 'square' | 'round' | 'long'; is_active: boolean }
+
+export interface FeatureModule { key: string; name_en: string; name_ar: string; built: boolean; sort: number; universal?: boolean }
 export interface BusinessProfile {
   key: string; name_en: string; name_ar: string; family: 'food' | 'retail' | 'services' | 'wholesale'
   pos_mode: 'grid' | 'scan' | 'calendar' | 'ticket'; launch: boolean; modules: Record<string, 1 | 2>; sort: number
@@ -42,7 +63,9 @@ export interface Category { id: string; tenant_id: string; name: string; name_ar
 export interface Item {
   id: string; tenant_id: string; category_id: string | null; name: string; name_ar: string | null; sku: string | null
   barcode: string | null; price: number; cost: number; tax_rate: number | null; track_stock: boolean; is_active: boolean
-  image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe'; unit?: string; reorder_point?: number | null
+  image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe' | 'service' | 'package'; unit?: string; reorder_point?: number | null
+  parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null
+  track_expiry?: boolean; commission_pct?: number | null; duration_min?: number | null
 }
 
 export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number }
@@ -66,6 +89,15 @@ export interface Sale {
 export interface CartLine {
   key: string; item_id: string | null; name: string; name_ar: string | null; qty: number; unit_price: number
   list_price: number; discount: number; tax_rate: number; note?: string
+  /** chosen add-ons (prices already included in unit_price / list_price) */
+  modifiers?: { id: string; name: string; name_ar: string | null; price: number }[]
+  /** discount from a promotion, filled by the promotion engine */
+  promo_discount?: number; promo_name?: string
+  staff_id?: string | null
+  /** a session from a customer package: the line is worth package_value, VAT was charged on the package */
+  customer_package_id?: string | null; package_value?: number | null
+  /** open order (table) line already sent to the kitchen */
+  fired?: boolean
 }
 export interface TenderEntry { tender: Tender; amount: number; reference?: string; channel_id?: string }
 

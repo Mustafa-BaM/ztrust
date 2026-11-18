@@ -11,6 +11,8 @@ import { configureHub, detectHub, hubSettings, useHub } from '../lib/hub'
 import { prepareLogo } from '../lib/logo'
 import Modules from './settings/Modules'
 import Integrations from './settings/Integrations'
+import { ModuleSettings, StaffExtras, TablesSetup } from './settings/ModuleSettings'
+import { RECEIPT_FONTS } from '../components/Receipt'
 
 const MODULES: Record<string, string> = {
   sales: 'Sales and cash', kitchen: 'Kitchen', catalog: 'Products and customers', inventory: 'Inventory',
@@ -27,6 +29,7 @@ export default function Settings() {
     { id: 'staff' as const, label: 'Staff', show: s.can('staff.manage') },
     { id: 'dash' as const, label: 'Dashboards', show: owner },
     { id: 'kitchen' as const, label: 'Kitchen stations', show: s.can('settings.manage') && s.has('kitchen') },
+    { id: 'tables' as const, label: 'Tables', show: s.can('settings.manage') && s.has('tables') },
     { id: 'business' as const, label: 'Business and receipt', show: s.can('settings.manage') },
     { id: 'delivery' as const, label: 'Delivery platforms', show: s.can('settings.manage') && s.has('delivery') },
     { id: 'integrations' as const, label: 'Integrations', show: s.can('settings.manage') },
@@ -42,6 +45,7 @@ export default function Settings() {
       {tab === 'staff' && <Staff />}
       {tab === 'dash' && <Dashboards />}
       {tab === 'kitchen' && <Kitchen />}
+      {tab === 'tables' && <TablesSetup />}
       {tab === 'business' && <Business />}
       {tab === 'delivery' && <Delivery />}
       {tab === 'integrations' && <Integrations onOpenModules={() => setTab('modules')} />}
@@ -207,7 +211,7 @@ function Staff() {
   const [inv, setInv] = useState({ email: '', display_name: '', role: 'cashier' })
   const [msg, setMsg] = useState<string | null>(null)
   const load = useCallback(async () => {
-    const { data } = await supabase.from('memberships').select('tenant_id,user_id,role,display_name,branch_ids,is_active').eq('tenant_id', tn.id).order('display_name')
+    const { data } = await supabase.from('memberships').select('tenant_id,user_id,role,display_name,branch_ids,is_active,bookable,commission_pct').eq('tenant_id', tn.id).order('display_name')
     setList((data ?? []) as Membership[])
   }, [tn.id])
   useEffect(() => { void load() }, [load])
@@ -227,7 +231,7 @@ function Staff() {
   return (
     <section className="stack">
       <div className="card table-wrap"><table className="list">
-        <thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Branches')}</th><th>{t('Active')}</th></tr></thead>
+        <thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Branches')}</th><th>{t('Active')}</th>{s.has('appointments') && <th>{t('Takes bookings')}</th>}{s.has('commissions') && <th>{t('Commission %')}</th>}</tr></thead>
         <tbody>{list.map((m) => (
           <tr key={m.user_id}><td>{m.display_name}</td>
             <td>{m.role === 'owner' ? s.roleName('owner', lang) : (
@@ -236,6 +240,7 @@ function Staff() {
               <select id={`br-${m.user_id}`} value={m.branch_ids?.[0] ?? ''} onChange={(e) => void update(m, { branch_ids: e.target.value ? [e.target.value] : null })}>
                 <option value="">{t('All branches')}</option>{s.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>)}</td>
             <td>{m.role !== 'owner' && <input id={`act-${m.user_id}`} type="checkbox" checked={m.is_active} onChange={(e) => void update(m, { is_active: e.target.checked })} />}</td>
+            <StaffExtras m={m} onSaved={() => void load()} />
           </tr>))}</tbody>
       </table></div>
       <form className="card grid2" onSubmit={invite}>
@@ -399,7 +404,7 @@ function Business() {
     pos_show_images: Boolean(st.pos_show_images), receipt_address: st.receipt_address ?? '', receipt_phones: st.receipt_phones ?? '',
     receipt_cr: st.receipt_cr ?? '', receipt_website: st.receipt_website ?? '', receipt_header: st.receipt_header ?? '',
     receipt_terms: st.receipt_terms ?? '', receipt_footer: st.receipt_footer ?? '',
-    logo_show: st.logo_show ?? true, logo_size: st.logo_size ?? 'm',
+    logo_show: st.logo_show ?? true, logo_size: st.logo_size ?? 's', receipt_font: st.receipt_font ?? 'plex-mono', receipt_font_size: st.receipt_font_size ?? 'm',
   })
   const [logo, setLogo] = useState({ url: tn.logo_url, mono: st.logo_mono_url ?? null as string | null })
   const [logoBusy, setLogoBusy] = useState(false)
@@ -452,14 +457,14 @@ function Business() {
             <div className="stack">
               <div className="row wrap">
                 <label className={`button ${logoBusy ? 'disabled' : ''}`}>{logoBusy ? t('Please wait…') : logo.url ? t('Replace logo') : t('Upload logo')}
-                  <input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden disabled={logoBusy}
+                  <input id="logo-file" type="file" accept="image/*" hidden disabled={logoBusy}
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = '' }} /></label>
                 {logo.url && <button type="button" className="ghost" onClick={() => void removeLogo()}>{t('Remove')}</button>}
               </div>
               <label className="check"><input id="logo-show" type="checkbox" checked={r.logo_show} onChange={(e) => setR({ ...r, logo_show: e.target.checked })} />{t('Print the logo on receipts')}</label>
               <div className="seg" role="group" aria-label={t('Logo size')}>{(['s', 'm', 'l'] as const).map((k) => (
                 <button type="button" key={k} className={r.logo_size === k ? 'on' : ''} onClick={() => setR({ ...r, logo_size: k })}>{t({ s: 'Small', m: 'Medium', l: 'Large' }[k])}</button>))}</div>
-              <p className="muted small">{t('PNG, JPG, WebP or SVG. A black-and-white copy is made for thermal printers, which cannot print grey.')}</p>
+              <p className="muted small">{t('Any photo or logo file (PNG, JPG, WebP, SVG). A black-and-white copy is made for thermal printers, which cannot print grey.')}</p>
             </div>
           </div>
           <label className="field"><span>{t('Phone numbers')}</span><input id="r-phones" value={r.receipt_phones} onChange={(e) => setR({ ...r, receipt_phones: e.target.value })} placeholder="+965 2222 0000 · WhatsApp 5555 0000" /></label>
@@ -469,11 +474,16 @@ function Business() {
           <label className="field"><span>{t('Extra header line')}</span><input id="r-header" value={r.receipt_header} onChange={(e) => setR({ ...r, receipt_header: e.target.value })} placeholder={t('e.g. Open daily 7 am – 1 am')} /></label>
           <label className="field span2"><span>{t('Terms and conditions (printed at the bottom)')}</span><textarea id="r-terms" rows={4} value={r.receipt_terms} onChange={(e) => setR({ ...r, receipt_terms: e.target.value })}
             placeholder={t('e.g. Exchange within 7 days with the receipt. No refund on food items.')} /></label>
+          <label className="field"><span>{t('Receipt font')}</span><select id="r-font" value={r.receipt_font} onChange={(e) => setR({ ...r, receipt_font: e.target.value })}>
+            {RECEIPT_FONTS.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: f.stack }}>{f.label}</option>)}</select></label>
+          <label className="field"><span>{t('Text size')}</span><select id="r-font-size" value={r.receipt_font_size} onChange={(e) => setR({ ...r, receipt_font_size: e.target.value as 's' | 'm' | 'l' })}>
+            <option value="s">{t('Small')}</option><option value="m">{t('Medium')}</option><option value="l">{t('Large')}</option></select></label>
           <label className="field span2"><span>{t('Closing message')}</span><input id="r-footer" value={r.receipt_footer} onChange={(e) => setR({ ...r, receipt_footer: e.target.value })} placeholder="شكراً لزيارتكم · Thank you" /></label>
           <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
         </div>
         <div className="card receipt-live"><h2>{t('Preview')}</h2><div className="receipt-preview"><Receipt data={preview} tenant={{ ...tn, name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, logo_url: logo.url, settings: { ...st, ...r, logo_mono_url: logo.mono ?? undefined } }} branch={s.branch} /></div></div>
       </div>
+      <ModuleSettings />
     </section>
   )
 }

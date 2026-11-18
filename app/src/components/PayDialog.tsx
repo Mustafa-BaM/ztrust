@@ -20,12 +20,16 @@ function quickCash(due: number, decimals: number): number[] {
  * Split payment: any number of tenders until the remaining amount is zero.
  * Cash may be over-tendered; the difference is change. On account, payment link and store credit need a customer.
  */
-export function PayDialog({ total, tenant, customer, online, channels = [], onClose, onConfirm, onPickCustomer }: {
+export function PayDialog({ total, tenant, customer, online, channels = [], points = null, onClose, onConfirm, onPickCustomer }: {
   total: number; tenant: Tenant; customer: Customer | null; online: boolean; channels?: { id: string; display_name: string }[]
+  /** the customer's loyalty points (null = loyalty off or no customer) */
+  points?: number | null
   onClose: () => void; onConfirm: (t: TenderEntry[], change: number) => void; onPickCustomer: () => void
 }) {
   const { t, lang } = useT()
-  const tenders = TENDERS.filter((x) => x !== 'on_account' || tenant.features?.credit)
+  const pv = Number(tenant.settings?.loyalty_point_value ?? 0), minPts = Number(tenant.settings?.loyalty_min_points ?? 0)
+  const pointsValue = points != null && pv > 0 ? Math.floor(points * pv) : 0
+  const tenders: Tender[] = [...TENDERS.filter((x) => x !== 'on_account' || tenant.features?.credit), ...(points != null && pv > 0 ? ['loyalty' as Tender] : [])]
   const d = tenant.currency_decimals
   const [entries, setEntries] = useState<TenderEntry[]>([])
   const [tender, setTender] = useState<Tender>('cash')
@@ -45,7 +49,8 @@ export function PayDialog({ total, tenant, customer, online, channels = [], onCl
   }, [remaining, entries, change, onConfirm])
 
   const needsCustomer = (x: Tender) => x === 'on_account' || x === 'payment_link' || x === 'store_credit'
-  const disabled = (x: Tender) => (needsCustomer(x) && !customer) || (x === 'payment_link' && !online)
+  const usedPts = entries.filter((e) => e.tender === 'loyalty').reduce((a, e) => a + e.amount, 0)
+  const disabled = (x: Tender) => (needsCustomer(x) && !customer) || (x === 'payment_link' && !online) || (x === 'loyalty' && (!online || (points ?? 0) < Math.max(minPts, 1) || pointsValue - usedPts <= 0))
   const suggestions = useMemo(() => quickCash(Math.max(remaining, 0), d), [remaining, d])
 
   function add(value?: number) {
@@ -56,7 +61,8 @@ export function PayDialog({ total, tenant, customer, online, channels = [], onCl
       setEntries([...entries, { tender: 'cash', amount: remaining }])
     } else {
       if (tender === 'platform' && !channel) return
-      setEntries([...entries, { tender, amount: Math.min(v, remaining), reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined }])
+      const cap = tender === 'loyalty' ? Math.min(v, remaining, pointsValue - usedPts) : Math.min(v, remaining)
+      setEntries([...entries, { tender, amount: cap, reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined }])
     }
     setRef('')
   }
@@ -78,6 +84,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], onCl
             </button>
           ))}
         </div>
+        {points != null && <p className="muted small">{t('{n} points available, worth {v}', { n: points, v: fmt(pointsValue, tenant, lang) })}{minPts > 0 ? ` · ${t('minimum {n} points', { n: minPts })}` : ''}</p>}
         {!customer && <button className="link" onClick={onPickCustomer}>{t('Add a customer to use on account, payment link or store credit')}</button>}
 
         {remaining > 0 && (

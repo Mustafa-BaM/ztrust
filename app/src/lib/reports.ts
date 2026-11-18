@@ -135,3 +135,23 @@ export function kitchenSummary(rows: KitchenRow[]) {
       slowest: done.reduce<KitchenRow | null>((a, b) => (!a || (b.total_s ?? 0) > (a.total_s ?? 0) ? b : a), null) }
   })
 }
+
+export interface CommissionRow { staff_id: string; staff_name: string; lines: number; net: number; commission: number }
+export async function commissions(r: Range): Promise<CommissionRow[]> {
+  let q = supabase.from('v_commissions').select('staff_id, staff_name, net, commission, branch_id').gte('day', r.from).lte('day', r.to)
+  if (r.branchId) q = q.eq('branch_id', r.branchId)
+  const { data } = await q
+  const m = new Map<string, CommissionRow>()
+  for (const x of (data ?? []) as { staff_id: string; staff_name: string; net: number; commission: number }[]) {
+    const c = m.get(x.staff_id) ?? { staff_id: x.staff_id, staff_name: x.staff_name, lines: 0, net: 0, commission: 0 }
+    c.lines++; c.net += Number(x.net); c.commission += Number(x.commission); m.set(x.staff_id, c)
+  }
+  return [...m.values()].sort((a, b) => b.commission - a.commission)
+}
+export interface PromoRow { promotion: string; invoices: number; qty: number; discount: number; net_sales: number }
+export async function promoSales(r: Range): Promise<PromoRow[]> {
+  let q = supabase.from('v_promo_sales').select('promotion, invoices, qty, discount, net_sales, branch_id').gte('day', r.from).lte('day', r.to)
+  if (r.branchId) q = q.eq('branch_id', r.branchId)
+  const { data } = await q
+  return rollup((data ?? []) as (PromoRow & { branch_id: string })[], (x) => x.promotion, ['invoices', 'qty', 'discount', 'net_sales'])
+}

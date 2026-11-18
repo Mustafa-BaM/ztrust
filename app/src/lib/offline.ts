@@ -1,14 +1,19 @@
 import { createStore, del, entries, get, set } from 'idb-keyval'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { parseError, supabase } from './supabase'
-import type { Category, Customer, Item } from './types'
+import type { Category, Customer, Item, ModifierGroup, ModifierOption, Promotion } from './types'
 
 // IndexedDB stores: the catalog snapshot used by the POS, and the outbox of sales made offline.
 const catalogStore = createStore('zt-catalog', 'kv')
 const outboxStore = createStore('zt-outbox', 'sales')
 
 export interface CatalogStation { id: string; name: string; is_default: boolean; sort: number }
-export interface Catalog { items: Item[]; categories: Category[]; customers: Customer[]; stations?: number; stationList?: CatalogStation[]; channels?: { id: string; display_name: string; platform: string }[]; savedAt: string }
+export interface Catalog {
+  items: Item[]; categories: Category[]; customers: Customer[]; stations?: number; stationList?: CatalogStation[]; channels?: { id: string; display_name: string; platform: string }[]
+  modGroups?: ModifierGroup[]; modOptions?: ModifierOption[]; itemGroups?: { item_id: string; group_id: string; sort: number }[]
+  promos?: Promotion[]; staff?: { user_id: string; display_name: string; bookable: boolean; color: string | null }[]
+  savedAt: string
+}
 
 export async function saveCatalog(tenantId: string, c: Omit<Catalog, 'savedAt'>) {
   await set(tenantId, { ...c, savedAt: new Date().toISOString() }, catalogStore)

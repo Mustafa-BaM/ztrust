@@ -52,8 +52,10 @@ export default function Modules() {
     } catch (e) { const x = parseError(e); setMsg({ ok: false, text: x.kind === 'message' ? t(x.message) : t('Not allowed') }) } finally { setBusy(null) }
   }
 
-  const built = mods.filter((m) => m.built)
-  const planned = mods.filter((m) => !m.built)
+  // only what this kind of business can use: its own modules plus the ones every business can use
+  const allowed = mods.filter((m) => m.universal || profile?.modules[m.key] || on(m.key))
+  const built = allowed.filter((m) => m.built)
+  const planned = allowed.filter((m) => !m.built)
   const forProfile = planned.filter((m) => profile?.modules[m.key])
   const others = planned.filter((m) => !profile?.modules[m.key])
   const Mode = profile ? POS_MODE[profile.pos_mode] : null
@@ -128,4 +130,16 @@ const MOD_HINT: Record<string, string> = {
   credit: 'Sell on account to customers with a credit limit, and collect later.',
   purchasing: 'Suppliers, purchase orders with approval, and goods received.',
   integrations: 'Send events to n8n or any webhook, and read data with API keys.',
+  tables: 'Floor plan, open orders per table, send rounds to the kitchen, split the bill.',
+  modifiers: 'Sizes, milk, extras, gift wrap: priced add-ons that can use stock.',
+  variants: 'Size × colour matrix; each variant has its own barcode and stock.',
+  batches: 'Batch numbers and expiry dates; sales take the first to expire.',
+  weighed: 'Sell by weight; scale labels with the weight or price are read at the till.',
+  promotions: 'Percent off, buy X get Y, bundles, happy hour and coupons, applied automatically.',
+  loyalty: 'Points on every purchase, redeemed at the till.',
+  appointments: 'Calendar by staff member, online booking page, checkout from the appointment.',
+  commissions: 'Commission per staff member or per service, with a report.',
+  memberships: 'Prepaid session packages and memberships, booked as deferred revenue.',
+  job_cards: 'Drop-off tickets with tag numbers, ready notice, collect and pay.',
+  preorders: 'Orders for a future date with a deposit (cakes, flowers, tailoring).',
 }

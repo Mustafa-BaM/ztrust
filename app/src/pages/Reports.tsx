@@ -6,7 +6,7 @@ import { num } from '../lib/money'
 import * as R from '../lib/reports'
 import { useSession } from '../lib/session'
 
-type Tab = 'daily' | 'items' | 'tenders' | 'cashiers' | 'kitchen' | 'channels' | 'exceptions' | 'vat' | 'tb'
+type Tab = 'daily' | 'items' | 'tenders' | 'cashiers' | 'kitchen' | 'channels' | 'commissions' | 'promotions' | 'exceptions' | 'vat' | 'tb'
 
 /** Every figure in minor units is shown in the tenant currency; every tab exports to CSV for Excel. */
 export default function Reports() {
@@ -28,6 +28,8 @@ export default function Reports() {
     { id: 'cashiers', label: 'Cashiers', show: true },
     { id: 'kitchen', label: 'Kitchen times', show: s.has('kitchen') },
     { id: 'channels', label: 'Sales channels', show: s.has('delivery') },
+    { id: 'commissions', label: 'Commissions', show: s.has('commissions') },
+    { id: 'promotions', label: 'Promotions', show: s.has('promotions') },
     { id: 'exceptions', label: 'Exceptions', show: s.can('reports.exceptions') },
     { id: 'vat', label: 'VAT', show: true },
     { id: 'tb', label: 'Trial balance', show: s.can('finance.view') },
@@ -53,6 +55,8 @@ export default function Reports() {
           setExtra(rows); break
         }
         case 'channels': setRows((await R.channelSales(r)).map((x) => ({ [t('Channel')]: x.channel === 'In store' ? t('In store') : x.channel, [t('Orders')]: x.orders, [t('Net sales')]: m(x.net_sales) }))); break
+        case 'commissions': setRows((await R.commissions(r)).map((x) => ({ [t('Staff')]: x.staff_name, [t('Lines')]: x.lines, [t('Net sales')]: m(x.net), [t('Commission')]: m(x.commission) }))); break
+        case 'promotions': setRows((await R.promoSales(r)).map((x) => ({ [t('Promotion')]: x.promotion, [t('Invoices')]: Number(x.invoices), [t('Qty')]: Number(x.qty), [t('Given away')]: m(Number(x.discount)), [t('Net sales')]: m(Number(x.net_sales)) }))); break
         case 'exceptions': setRows((await R.exceptions(r)).map((x) => ({ [t('Time')]: new Date(x.created_at).toLocaleString(), [t('Action')]: t(R.ACTION_LABEL[x.action] ?? x.action), [t('By')]: x.user_name, [t('Approved by')]: x.approver_name ?? '', [t('Reason')]: x.reason ?? '', [t('Amount')]: x.amount != null ? m(x.amount) : '' }))); break
         case 'vat': {
           const dd = await R.daily(r)

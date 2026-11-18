@@ -607,6 +607,21 @@ begin
   return sale_json(v_sale);
 end $$;
 
+
+-- ================================================================ staff profile for bookings and commissions (the owner's own row included)
+create or replace function public.set_staff_profile(p_tenant uuid, p_user uuid, p jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _require(p_tenant, 'staff.manage', null, null);
+  update memberships set
+    bookable = coalesce((p->>'bookable')::boolean, bookable),
+    commission_pct = case when p ? 'commission_pct' then nullif(p->>'commission_pct','')::numeric else commission_pct end,
+    color = case when p ? 'color' then nullif(p->>'color','') else color end
+   where tenant_id = p_tenant and user_id = p_user;
+  if not found then raise exception 'not found' using errcode = '42501'; end if;
+end $$;
+grant execute on function public.set_staff_profile(uuid, uuid, jsonb) to authenticated;
+
 -- ================================================================ onboarding with the new defaults
 create or replace function public.create_tenant(p jsonb) returns uuid
 language plpgsql security definer set search_path = public, extensions as $$
@@ -676,3 +691,20 @@ grant execute on function public.save_work_order(jsonb), public.set_work_order_s
   public.save_open_order(jsonb), public.void_open_order(uuid, text, text), public.customer_points(uuid), public.complete_sale(jsonb) to authenticated;
 revoke execute on function public._kitchen_from_lines(uuid, uuid, uuid, text, text, text, jsonb), public._price_lines(uuid, jsonb),
   public.loyalty_on_refund() from public, anon, authenticated;
+
+-- logos made from photos can be larger than 1 MB as PNG
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'storage' and table_name = 'buckets') then
+    update storage.buckets set file_size_limit = 3145728 where id = 'branding';
+  end if;
+end $$;
+
+-- what each promotion gave away, by day (report)
+create or replace view public.v_promo_sales with (security_invoker = true) as
+select s.tenant_id, s.branch_id, (s.created_at at time zone b.timezone)::date as day, p.id as promo_id, p.name as promotion,
+       count(distinct s.id) as invoices, sum(l.qty) as qty, sum(l.promo_discount) as discount, sum(l.net_amount) as net_sales
+  from public.sale_lines l join public.sales s on s.id = l.sale_id join public.branches b on b.id = s.branch_id
+  join public.promotions p on p.id = l.promo_id
+ where s.doc_type = 'invoice' and l.promo_discount > 0
+ group by s.tenant_id, s.branch_id, 3, p.id, p.name;
+grant select on public.v_promo_sales to authenticated;

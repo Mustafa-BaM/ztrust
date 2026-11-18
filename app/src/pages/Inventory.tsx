@@ -1,14 +1,16 @@
 import { AlertTriangle, ClipboardCheck, Download } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Empty, useApproval } from '../components/ui'
+import { Empty, Modal, useApproval } from '../components/ui'
 import { useT } from '../lib/i18n'
 import { fmt, num } from '../lib/money'
+import { parseError } from '../lib/supabase'
 import { downloadCsv } from '../lib/reports'
 import { useSession } from '../lib/session'
 import { norm } from '../lib/shift'
 import { rpc, supabase } from '../lib/supabase'
 
 interface Row { item_id: string; name: string; name_ar: string | null; sku: string | null; barcode: string | null; item_type: string; unit: string; cost: number; reorder_point: number | null; on_hand: number; value: number; last_movement: string | null; used_30d: number }
+interface Batch { id: string; item_id: string; name: string; name_ar: string | null; unit: string; cost: number; batch_no: string; expiry_date: string | null; on_hand: number; days_left: number | null }
 interface Move { created_at: string; reason: string; qty: number | null; unit_cost: number | null; balance: number; note: string | null; by_name: string | null }
 
 const REASON: Record<string, string> = { opening: 'Opening balance', sale: 'Sale', refund: 'Refund', adjustment: 'Adjustment', receipt: 'Goods received', count: 'Stock count', transfer_in: 'Transfer in', transfer_out: 'Transfer out' }
@@ -20,7 +22,9 @@ export default function Inventory() {
   const s = useSession()
   const tn = s.tenant!
   const d = tn.currency_decimals
-  const [tab, setTab] = useState<'stock' | 'card' | 'count'>('stock')
+  const [tab, setTab] = useState<'stock' | 'card' | 'count' | 'expiry'>('stock')
+  const [batches, setBatches] = useState<Batch[]>([])
+  const [writeOff, setWriteOff] = useState<Batch | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [q, setQ] = useState('')
   const [onlyLow, setOnlyLow] = useState(false)
@@ -41,6 +45,12 @@ export default function Inventory() {
     setRows(((data ?? []) as Row[]).map((r) => ({ ...r, on_hand: Number(r.on_hand), used_30d: Number(r.used_30d) })))
   }, [s.branch])
   useEffect(() => { void load() }, [load])
+  const loadBatches = useCallback(async () => {
+    if (!s.branch || !s.has('batches')) return
+    const { data } = await supabase.from('v_batches').select('*').eq('branch_id', s.branch.id).gt('on_hand', 0).order('expiry_date', { nullsFirst: false })
+    setBatches(((data ?? []) as Batch[]).map((b) => ({ ...b, on_hand: Number(b.on_hand) })))
+  }, [s])
+  useEffect(() => { if (tab === 'expiry') void loadBatches() }, [tab, loadBatches])
   useEffect(() => {
     if (tab !== 'card' || !cardItem || !s.branch) return
     void rpc<Move[]>('stock_card', { p_item: cardItem, p_branch: s.branch.id, p_from: from, p_to: to }).then(setMoves).catch(() => setMoves([]))
@@ -69,6 +79,7 @@ export default function Inventory() {
         <button className={tab === 'stock' ? 'on' : ''} onClick={() => setTab('stock')}>{t('Stock on hand')}</button>
         <button className={tab === 'card' ? 'on' : ''} onClick={() => setTab('card')}>{t('Stock card')}</button>
         {s.can('inventory.adjust') && <button className={tab === 'count' ? 'on' : ''} onClick={() => setTab('count')}>{t('Stock count')}</button>}
+        {s.has('batches') && <button className={tab === 'expiry' ? 'on' : ''} onClick={() => setTab('expiry')}>{t('Expiry')}</button>}
       </div>
 
       {tab === 'stock' && (
@@ -145,7 +156,56 @@ export default function Inventory() {
           </table></div>
         </>
       )}
+      {tab === 'expiry' && (() => {
+        const val = (b: Batch) => Math.round(b.on_hand * b.cost)
+        const expired = batches.filter((b) => b.days_left != null && b.days_left < 0), soon = batches.filter((b) => b.days_left != null && b.days_left >= 0 && b.days_left <= 7)
+        return (
+          <>
+            <div className="kpi-row">
+              <div className="kpi2"><span className="kpi2-label">{t('Expired')}</span><b className={`kpi2-value ${expired.length ? 'bad' : ''}`}>{expired.length}</b>{canCost && <span className="kpi2-sub">{fmt(expired.reduce((a, b) => a + val(b), 0), tn, lang)}</span>}</div>
+              <div className="kpi2"><span className="kpi2-label">{t('Expiring within 7 days')}</span><b className={`kpi2-value ${soon.length ? 'warn' : ''}`}>{soon.length}</b>{canCost && <span className="kpi2-sub">{fmt(soon.reduce((a, b) => a + val(b), 0), tn, lang)}</span>}</div>
+              <div className="kpi2"><span className="kpi2-label">{t('Batches in stock')}</span><b className="kpi2-value">{batches.length}</b></div>
+            </div>
+            <p className="muted small">{t('Sales take stock from the batch that expires first. Write off expired or damaged stock here; it is posted to inventory adjustments.')}</p>
+            {batches.length === 0 ? <Empty title={t('No batches yet')} hint={t('Tick “Track batches and expiry dates” on an item, then receive it with a batch number and expiry date.')} /> : (
+              <div className="table-wrap"><table className="list">
+                <thead><tr><th>{t('Item')}</th><th>{t('Batch')}</th><th>{t('Expiry date')}</th><th className="num">{t('Days left')}</th><th className="num">{t('On hand')}</th>{canCost && <th className="num">{t('Value')}</th>}<th /></tr></thead>
+                <tbody>{batches.map((b) => (
+                  <tr key={b.id} className={b.days_left != null && b.days_left < 0 ? 'row-bad' : b.days_left != null && b.days_left <= 7 ? 'row-warn' : ''}>
+                    <td>{name(b)}</td><td className="mono small">{b.batch_no}</td><td>{b.expiry_date ?? '—'}</td>
+                    <td className={`num ${b.days_left != null && b.days_left < 0 ? 'bad' : ''}`}>{b.days_left ?? '—'}</td>
+                    <td className="num"><b>{Number(b.on_hand.toFixed(3))}</b> {t(b.unit)}</td>{canCost && <td className="num">{num(val(b), d)}</td>}
+                    <td>{s.can('inventory.adjust') && <button className="ghost small" onClick={() => setWriteOff(b)}>{t('Write off')}</button>}</td></tr>))}</tbody>
+              </table></div>)}
+            {writeOff && <WriteOff b={writeOff} onClose={() => setWriteOff(null)} onDone={async () => { setWriteOff(null); await loadBatches(); await load() }} />}
+          </>
+        )
+      })()}
       {approval.dialog}
     </div>
+  )
+}
+
+function WriteOff({ b, onClose, onDone }: { b: Batch; onClose: () => void; onDone: () => void }) {
+  const { t } = useT()
+  const approval = useApproval()
+  const [qty, setQty] = useState(String(b.on_hand))
+  const [reason, setReason] = useState(b.days_left != null && b.days_left < 0 ? t('Expired') : t('Damaged'))
+  const [err, setErr] = useState<string | null>(null)
+  async function go() {
+    setErr(null)
+    try { const r = await approval.run(() => rpc('write_off_batch', { p_batch: b.id, p_qty: Number(qty), p_reason: reason }).then(() => true)); if (r) onDone() }
+    catch (e) { const p = parseError(e); setErr(p.kind === 'message' ? t(p.message) : '') }
+  }
+  return (
+    <Modal title={`${t('Write off')} · ${b.name} · ${b.batch_no}`} onClose={onClose}>
+      <div className="stack">
+        <label className="field"><span>{t('Quantity')}</span><input id="wo-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></label>
+        <label className="field"><span>{t('Reason')}</span><input id="wo-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        {(err || approval.error) && <p className="error">{err || approval.error}</p>}
+        <div className="row end"><button className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="danger" onClick={() => void go()}>{t('Write off')}</button></div>
+      </div>
+      {approval.dialog}
+    </Modal>
   )
 }

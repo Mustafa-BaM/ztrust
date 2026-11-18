@@ -59,6 +59,26 @@ With the internet down, sales are queued on the POS, tickets go POS → hub → 
 
 Deploy: `supabase functions deploy dispatch-events --no-verify-jwt` (secret `DISPATCH_SECRET`, schedule it every minute with pg_cron + pg_net) and `supabase functions deploy public-api --no-verify-jwt`.
 
+## Phases B–D (all nine launch business types complete)
+
+| Module | What it does |
+|---|---|
+| Add-ons | Groups (required / optional, max picks) with priced options that can use stock (oat milk 0.2 l). Chosen at the till; checked and priced by the server. |
+| Variants | Size × colour matrix under a template; each variant has its own barcode, SKU and stock; the till asks for the size and colour. |
+| Batches & expiry | Receive with batch number and expiry; sales take the batch that expires first (FEFO); expiry list and write-off to inventory adjustments. |
+| Weighed items | Sold per kg; weight dialog on tap; scale labels (prefix + PLU + weight or price) read from the scanner. |
+| Promotions | Percent, buy X get Y, bundle at a fixed price, amount off the bill; dates, weekdays, happy hour, coupons. Same engine on the till (`app/src/lib/promotions.ts`) and the server (`promo_allowance`); the server caps what the till claims. No PIN needed. |
+| Appointments | Day calendar per staff member, working hours, no double booking (exclusion constraint), public booking page `/book/<slug>`, checkout from the appointment. |
+| Commissions | Per service or per staff member, on net sales, refunds deducted; report in Reports. |
+| Packages & memberships | Prepaid sessions sold as an item; net price held in deferred revenue and released per session; sessions paid automatically at checkout; `expire_packages` releases what is left at expiry. |
+| Job cards & pre-orders | Intake with tags, reference, due time; deposits held as a liability; ready → event `job.ready`; collect and pay with the deposit applied automatically. |
+| Tables | Floor plan, one open order per table, send rounds to the kitchen, voiding a sent line needs a PIN, split the bill. |
+| Loyalty | Points on what was paid with money, redeemed as a tender (booked as loyalty expense), reversed on refunds. |
+
+Printing: choose 80 mm, 58 mm or an A4 invoice at print time; receipt font (IBM Plex Mono / Sans Arabic, Cairo, Tajawal, Noto Naskh, Courier) and text size in Settings. Works from any browser's print dialog (Safari ignores the page size and uses its own page setup).
+
+Known limits: deposits carry no VAT at the time of payment (Saudi rules tax advance payments — change before a KSA launch); loyalty redemptions are expensed rather than deferred (IFRS 15 would defer); unlimited memberships are recognised at sale; table orders, packages, deposits and points need internet; `expire_packages` must be scheduled (pg_cron).
+
 ## Run it
 
 ```bash
@@ -84,4 +104,4 @@ Browser tests (need `supabase start` + `npm run dev`; the hub test also needs `n
 
 ## Not in this slice yet
 
-Payment gateway checkout (the link page and webhook are ready), ZATCA Phase 2 signing/reporting, direct ESC/POS printing (Print Bridge), open checks / pay-later tables, structured modifiers, FEFO/batches, the 16 planned modules (variants, promotions, appointments, job cards…), WhatsApp and the AI assistant add-ons, platform-specific webhook adapters (need each platform's partner API documentation), bank reconciliation, fixed-asset register and depreciation runs, year-end closing entry, consignment, biometric/geofence attendance, payroll, subscription billing, and on-premise packaging. These follow the roadmap phases.
+Payment gateway checkout (the link page and webhook are ready), ZATCA Phase 2 signing/reporting, direct ESC/POS printing (Print Bridge), serial/IMEI & warranty, quotations & B2B prices, consignment, gold-rate pricing, WhatsApp and the AI assistant add-ons, platform-specific webhook adapters (need each platform's partner API documentation), bank reconciliation, fixed-asset register and depreciation runs, year-end closing entry, consignment, biometric/geofence attendance, payroll, subscription billing, and on-premise packaging. These follow the roadmap phases.

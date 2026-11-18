@@ -146,7 +146,7 @@ language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'business', t.name, 'business_ar', t.name_ar, 'logo_url', t.logo_url, 'brand_color', t.brand_color,
     'currency', t.currency, 'decimals', t.currency_decimals,
-    'branches', (select jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name, 'name_ar', b.name_ar, 'address', b.address) order by b.code) from branches b where b.tenant_id = t.id and b.is_active),
+    'branches', (select jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name, 'name_ar', b.name_ar, 'address', b.address, 'timezone', b.timezone) order by b.code) from branches b where b.tenant_id = t.id and b.is_active),
     'services', (select coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'name', i.name, 'name_ar', i.name_ar, 'duration_min', i.duration_min, 'price', i.price, 'image_url', i.image_url) order by i.name), '[]')
                    from items i where i.tenant_id = t.id and i.item_type = 'service' and i.is_active),
     'staff', (select coalesce(jsonb_agg(jsonb_build_object('id', m.user_id, 'name', m.display_name, 'color', m.color) order by m.display_name), '[]')

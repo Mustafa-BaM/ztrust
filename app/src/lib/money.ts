@@ -20,13 +20,15 @@ export function toMinor(input: string, decimals: number): number {
 }
 
 /** Postgres round() on numeric rounds half away from zero; mirror it so offline totals match the server exactly. */
-const pgRound = (x: number) => Math.sign(x) * Math.round(Math.abs(x))
+export const pgRound = (x: number) => Math.sign(x) * Math.round(Math.abs(x))
 
 export interface LineCalc { gross: number; net: number; tax: number; total: number }
 
 /** Same formula as complete_sale() in the database. */
 export function calcLine(l: CartLine, pricesIncludeTax: boolean): LineCalc {
-  const gross = pgRound(l.qty * l.unit_price) - l.discount
+  // a package session is worth its share of the package price; VAT was charged when the package was sold
+  if (l.customer_package_id && l.package_value != null) return { gross: l.package_value, net: l.package_value, tax: 0, total: l.package_value }
+  const gross = pgRound(l.qty * l.unit_price) - l.discount - (l.promo_discount ?? 0)
   if (pricesIncludeTax) {
     const tax = pgRound((gross * l.tax_rate) / (100 + l.tax_rate))
     return { gross, net: gross - tax, tax, total: gross }
@@ -36,13 +38,16 @@ export function calcLine(l: CartLine, pricesIncludeTax: boolean): LineCalc {
 }
 
 export function calcCart(lines: CartLine[], pricesIncludeTax: boolean) {
-  let net = 0, tax = 0, total = 0, list = 0, discount = 0
+  let net = 0, tax = 0, total = 0, list = 0, discount = 0, promo = 0, packages = 0
   for (const l of lines) {
     const c = calcLine(l, pricesIncludeTax)
     net += c.net; tax += c.tax; total += c.total
     list += pgRound(l.qty * l.list_price)
+    if (l.customer_package_id && l.package_value != null) { packages += l.package_value; continue }
     discount += l.discount + Math.max(pgRound(l.qty * (l.list_price - l.unit_price)), 0)
+    promo += l.promo_discount ?? 0
   }
+  // discount / discountPct: manual discounts only (these need approval); promotions are shown separately
   const discountPct = list > 0 ? Math.round((discount * 10000) / list) / 100 : 0
-  return { net, tax, total, list, discount, discountPct }
+  return { net, tax, total, list, discount, discountPct, promo, packages }
 }

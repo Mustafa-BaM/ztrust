@@ -1,4 +1,4 @@
-import { ChefHat, ImagePlus, Trash2 } from 'lucide-react'
+import { ChefHat, ImagePlus, Layers, ListPlus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Empty, Modal } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
@@ -6,10 +6,22 @@ import { num, toMinor } from '../lib/money'
 import { useSession } from '../lib/session'
 import { norm } from '../lib/shift'
 import { supabase, uuid } from '../lib/supabase'
-import type { Category, Item } from '../lib/types'
+import type { Category, Item, ModifierGroup } from '../lib/types'
+import { ModifierManager, VariantDialog } from './products/Extras'
 
 const UNITS = ['pcs', 'kg', 'g', 'l', 'ml', 'box', 'pack']
-type Kind = 'all' | 'standard' | 'recipe' | 'ingredient'
+type Kind = 'all' | 'standard' | 'recipe' | 'ingredient' | 'service' | 'package'
+type IType = Exclude<Kind, 'all'>
+const TYPE_LABEL: Record<IType, string> = { standard: 'Product', recipe: 'Recipe', ingredient: 'Ingredient', service: 'Service', package: 'Package' }
+const TYPE_FORM: Record<IType, string> = { standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)', service: 'Service (time, no stock)', package: 'Package (prepaid sessions)' }
+/** item types this business uses */
+export function itemTypes(has: (f: string) => boolean): IType[] {
+  const out: IType[] = ['standard']
+  if (has('appointments') || has('job_cards') || has('commissions') || has('memberships')) out.push('service')
+  if (has('memberships')) out.push('package')
+  if (has('recipes')) out.push('recipe', 'ingredient')
+  return out
+}
 
 /** Minimal CSV parser (quoted fields, commas, newlines). */
 function parseCsv(text: string): string[][] {
@@ -52,6 +64,9 @@ export default function Products() {
   const [edit, setEdit] = useState<Partial<Item> | null>(null)
   const [recipeFor, setRecipeFor] = useState<Item | null>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [variantFor, setVariantFor] = useState<Item | null>(null)
+  const [mods, setMods] = useState(false)
+  const types = itemTypes(s.has)
 
   const load = useCallback(async () => {
     const [i, c, st, rl] = await Promise.all([
@@ -73,7 +88,10 @@ export default function Products() {
 
   const shown = useMemo(() => {
     const n = norm(q)
-    return items.filter((i) => (kind === 'all' || (i.item_type ?? 'standard') === kind) && (!n || norm(i.name).includes(n) || norm(i.name_ar ?? '').includes(n) || i.barcode === q))
+    const list = items.filter((i) => (kind === 'all' || (i.item_type ?? 'standard') === kind) && (!n || norm(i.name).includes(n) || norm(i.name_ar ?? '').includes(n) || i.barcode === q))
+    // variants listed right under their template
+    const tops = list.filter((i) => !i.parent_id || !list.some((x) => x.id === i.parent_id))
+    return tops.flatMap((i) => [i, ...list.filter((x) => x.parent_id === i.id)])
   }, [items, q, kind])
 
   async function importFile(f: File) {
@@ -102,13 +120,13 @@ export default function Products() {
     await load()
   }
 
-  const typeLabel = { standard: 'Product', recipe: 'Recipe', ingredient: 'Ingredient' } as const
   return (
     <div className="page">
       <div className="row between wrap"><h1>{t('Products')}</h1>
-        {s.has('recipes') && <div className="seg">{(['all', 'standard', 'recipe', 'ingredient'] as Kind[]).map((k) => (
-          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients' }[k])}</button>))}</div>}
+        {types.length > 1 && <div className="seg">{(['all', ...types] as Kind[]).map((k) => (
+          <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{t({ all: 'All', standard: 'Products', recipe: 'Recipes', ingredient: 'Ingredients', service: 'Services', package: 'Packages' }[k])}</button>))}</div>}
         {canEdit && <div className="row">
+          {s.has('modifiers') && <button onClick={() => setMods(true)}><ListPlus size={16} />{t('Add-ons')}</button>}
           <label className="button">{t('Import CSV / Excel export')}<input id="import-file" type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = '' }} /></label>
           <button className="primary" onClick={() => setEdit({ price: 0, cost: 0, track_stock: true, is_active: true, item_type: kind === 'all' ? 'standard' : kind, unit: kind === 'ingredient' ? 'kg' : 'pcs' })}>{t('Add item')}</button>
         </div>}
@@ -126,8 +144,8 @@ export default function Products() {
             return (
               <tr key={i.id} className={i.is_active ? '' : 'dim'}>
                 <td className="thumb-cell">{i.image_url ? <img className="thumb" src={i.image_url} alt="" loading="lazy" /> : <span className="thumb mono-thumb">{nameOf(i).charAt(0)}</span>}</td>
-                <td>{nameOf(i)}{i.barcode && <div className="muted small mono">{i.barcode}</div>}</td>
-                <td><span className={`pill type-${type}`}>{t(typeLabel[type])}</span></td>
+                <td className={i.parent_id ? 'variant-cell' : ''}>{i.parent_id ? '↳ ' : ''}{nameOf(i)}{i.is_template && <span className="pill muted-pill">{t('{n} variants', { n: items.filter((x) => x.parent_id === i.id).length })}</span>}{i.barcode && <div className="muted small mono">{i.barcode}</div>}</td>
+                <td><span className={`pill type-${type}`}>{t(TYPE_LABEL[type])}</span></td>
                 <td>{nameOf(cats.find((c) => c.id === i.category_id))}</td>
                 <td className="num">{type === 'ingredient' ? '—' : num(i.price, d)}</td>
                 {canCost && <td className="num">{num(cost, d)}{type !== 'recipe' && <span className="muted small"> /{t(i.unit ?? 'pcs')}</span>}</td>}
@@ -135,6 +153,7 @@ export default function Products() {
                 <td className={`num ${low || ((stock[i.id] ?? 0) <= 0 && i.track_stock) ? 'bad' : ''}`}>{i.track_stock ? `${stock[i.id] ?? 0} ${t(i.unit ?? 'pcs')}` : '—'}</td>
                 <td className="row end">
                   {type === 'recipe' && canEdit && s.has('recipes') && <button className="ghost small" onClick={() => setRecipeFor(i)}><ChefHat size={15} />{t('Recipe')}</button>}
+                  {canEdit && s.has('variants') && type === 'standard' && !i.parent_id && <button className="ghost small" onClick={() => setVariantFor(i)}><Layers size={15} />{t('Variants')}</button>}
                   {canEdit && <button className="ghost small" onClick={() => setEdit(i)}>{t('Edit')}</button>}
                 </td>
               </tr>)
@@ -143,6 +162,8 @@ export default function Products() {
       )}
       {edit && <ItemForm item={edit} cats={cats} decimals={d} canCost={canCost} onClose={() => setEdit(null)}
         onSaved={async (saved) => { setEdit(null); await load(); if (saved?.item_type === 'recipe' && !edit.id) setRecipeFor(saved) }} />}
+      {variantFor && <VariantDialog item={variantFor} decimals={d} onClose={() => setVariantFor(null)} onDone={async () => { setVariantFor(null); await load() }} />}
+      {mods && <ModifierManager items={items} decimals={d} onClose={() => setMods(false)} />}
       {recipeFor && <RecipeEditor item={recipeFor} items={items} decimals={d} onClose={() => setRecipeFor(null)} onSaved={async () => { setRecipeFor(null); await load() }} />}
     </div>
   )
@@ -158,11 +179,31 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
     tax_rate: item.tax_rate == null ? '' : String(item.tax_rate), track_stock: item.track_stock ?? true, is_active: item.is_active ?? true, newCat: '',
     item_type: item.item_type ?? 'standard', unit: item.unit ?? 'pcs', reorder_point: item.reorder_point == null ? '' : String(item.reorder_point),
     image_url: item.image_url ?? null as string | null,
+    sold_by_weight: item.sold_by_weight ?? false, plu: item.plu ?? '', track_expiry: item.track_expiry ?? false,
+    commission_pct: item.commission_pct == null ? '' : String(item.commission_pct), duration_min: String(item.duration_min ?? 30),
   })
+  const types = itemTypes(s.has)
+  const [groups, setGroups] = useState<ModifierGroup[]>([])
+  const [itemGroups, setItemGroups] = useState<string[]>([])
+  const [services, setServices] = useState<Item[]>([])
+  const [pkg, setPkg] = useState({ kind: 'sessions', sessions: '10', validity_days: '365', covers: [] as string[] })
+  useEffect(() => {
+    if (s.has('modifiers')) {
+      void supabase.from('modifier_groups').select('*').eq('tenant_id', tn.id).order('sort').then(({ data }) => setGroups((data ?? []) as ModifierGroup[]))
+      if (item.id) void supabase.from('item_modifier_groups').select('group_id').eq('item_id', item.id).then(({ data }) => setItemGroups((data ?? []).map((r) => r.group_id as string)))
+    }
+    if (s.has('memberships')) {
+      void supabase.from('items').select('*').eq('tenant_id', tn.id).eq('item_type', 'service').order('name').then(({ data }) => setServices((data ?? []) as Item[]))
+      if (item.id) void supabase.from('package_defs').select('*').eq('item_id', item.id).maybeSingle().then(({ data }) => {
+        if (data) setPkg({ kind: data.kind, sessions: String(data.sessions ?? ''), validity_days: String(data.validity_days), covers: data.covers ?? [] })
+      })
+    }
+  }, [item.id, tn.id, s])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const set = (k: keyof typeof f, v: string | boolean | null) => setF({ ...f, [k]: v })
-  const isIng = f.item_type === 'ingredient', isRecipe = f.item_type === 'recipe'
+  const isIng = f.item_type === 'ingredient', isRecipe = f.item_type === 'recipe', isService = f.item_type === 'service', isPkg = f.item_type === 'package'
+  const noStock = isRecipe || isService || isPkg
 
   async function upload(file: File) {
     setBusy(true); setErr(null)
@@ -185,18 +226,31 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
     }
     const row = { tenant_id: tn.id, name: f.name.trim(), name_ar: f.name_ar.trim() || null, barcode: f.barcode.trim() || null, sku: f.sku.trim() || null,
       price: isIng ? 0 : toMinor(f.price, decimals), ...(canCost && !isRecipe ? { cost: toMinor(f.cost || '0', decimals) } : {}), category_id,
-      tax_rate: f.tax_rate === '' ? null : Number(f.tax_rate), track_stock: isRecipe ? false : isIng ? true : f.track_stock, is_active: f.is_active,
-      item_type: f.item_type, unit: f.unit, reorder_point: f.reorder_point === '' ? null : Number(f.reorder_point), image_url: f.image_url }
+      tax_rate: f.tax_rate === '' ? null : Number(f.tax_rate), track_stock: noStock ? false : isIng ? true : f.track_stock, is_active: f.is_active,
+      item_type: f.item_type, unit: f.unit, reorder_point: f.reorder_point === '' ? null : Number(f.reorder_point), image_url: f.image_url,
+      sold_by_weight: f.sold_by_weight, plu: f.plu.trim() || null, track_expiry: f.track_expiry,
+      commission_pct: f.commission_pct === '' ? null : Number(f.commission_pct), duration_min: isService ? Number(f.duration_min) || 30 : null }
     if (!Number.isFinite(row.price)) return setErr(t('Enter a valid price'))
     const r = item.id ? await supabase.from('items').update(row).eq('id', item.id).select().single() : await supabase.from('items').insert(row).select().single()
-    if (r.error) setErr(r.error.message); else onSaved(r.data as Item)
+    if (r.error) return setErr(r.error.message)
+    const saved = r.data as Item
+    if (s.has('modifiers') && !noStock) {
+      await supabase.from('item_modifier_groups').delete().eq('item_id', saved.id)
+      if (itemGroups.length) await supabase.from('item_modifier_groups').insert(itemGroups.map((g, i) => ({ tenant_id: tn.id, item_id: saved.id, group_id: g, sort: i })))
+    }
+    if (isPkg) {
+      const pr = await supabase.from('package_defs').upsert({ item_id: saved.id, tenant_id: tn.id, kind: pkg.kind, sessions: pkg.kind === 'sessions' ? Number(pkg.sessions) : null,
+        validity_days: Number(pkg.validity_days) || 365, covers: pkg.covers.length ? pkg.covers : null })
+      if (pr.error) return setErr(pr.error.message)
+    }
+    onSaved(saved)
   }
   return (
     <Modal title={item.id ? t('Edit item') : t('Add item')} onClose={onClose} wide>
       <form className="grid2" onSubmit={save}>
-        {s.has('recipes') && <div className="span2 seg type-seg">{(['standard', 'recipe', 'ingredient'] as const).map((k) => (
+        {types.length > 1 && <div className="span2 seg type-seg">{types.map((k) => (
           <button type="button" key={k} className={f.item_type === k ? 'on' : ''} onClick={() => setF({ ...f, item_type: k, unit: k === 'ingredient' && f.unit === 'pcs' ? 'kg' : f.unit })}>
-            {t({ standard: 'Product (sold and stocked)', recipe: 'Recipe (sold, uses ingredients)', ingredient: 'Ingredient (stocked, not sold)' }[k])}</button>))}</div>}
+            {t(TYPE_FORM[k])}</button>))}</div>}
         <div className="img-field span2">
           {f.image_url ? <img src={f.image_url} alt="" className="img-preview" /> : <div className="img-preview empty"><ImagePlus size={28} /></div>}
           <div className="stack">
@@ -209,10 +263,10 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
         <label className="field"><span>{t('Name (English)')}</span><input id="item-name" required value={f.name} onChange={(e) => set('name', e.target.value)} /></label>
         <label className="field"><span>{t('Name (Arabic)')}</span><input id="item-name-ar" dir="rtl" value={f.name_ar} onChange={(e) => set('name_ar', e.target.value)} /></label>
         {!isIng && <label className="field"><span>{t('Price')}</span><input id="item-price" inputMode="decimal" required value={f.price} onChange={(e) => set('price', e.target.value)} /></label>}
-        {canCost && !isRecipe && <label className="field"><span>{isIng ? t('Cost per unit') : t('Cost')}</span><input id="item-cost" inputMode="decimal" value={f.cost} onChange={(e) => set('cost', e.target.value)} /></label>}
+        {canCost && !isRecipe && !isPkg && <label className="field"><span>{isIng ? t('Cost per unit') : t('Cost')}</span><input id="item-cost" inputMode="decimal" value={f.cost} onChange={(e) => set('cost', e.target.value)} /></label>}
         {isRecipe && <p className="muted small span2">{t('Recipe cost is calculated from its ingredients. Save, then add the ingredients.')}</p>}
         <label className="field"><span>{t('Unit')}</span><select id="item-unit" value={f.unit} onChange={(e) => set('unit', e.target.value)}>{UNITS.map((u) => <option key={u} value={u}>{t(u)}</option>)}</select></label>
-        {!isRecipe && <label className="field"><span>{t('Reorder when stock falls to')}</span><input id="item-reorder" inputMode="decimal" value={f.reorder_point} onChange={(e) => set('reorder_point', e.target.value)} /></label>}
+        {!noStock && <label className="field"><span>{t('Reorder when stock falls to')}</span><input id="item-reorder" inputMode="decimal" value={f.reorder_point} onChange={(e) => set('reorder_point', e.target.value)} /></label>}
         <label className="field"><span>{t('Barcode')}</span><input id="item-barcode" value={f.barcode} onChange={(e) => set('barcode', e.target.value)} /></label>
         <label className="field"><span>SKU</span><input id="item-sku" value={f.sku} onChange={(e) => set('sku', e.target.value)} /></label>
         <label className="field"><span>{t('Category')}</span>
@@ -221,8 +275,26 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
         {!isIng && <label className="field"><span>{t('VAT % (blank = business default)')}</span><input id="item-tax" inputMode="decimal" value={f.tax_rate} onChange={(e) => set('tax_rate', e.target.value)} /></label>}
         <div className="stack">
           {f.item_type === 'standard' && <label className="check"><input id="item-track" type="checkbox" checked={f.track_stock} onChange={(e) => set('track_stock', e.target.checked)} />{t('Track stock')}</label>}
+          {s.has('batches') && (f.item_type === 'standard' || isIng) && <label className="check"><input id="item-expiry" type="checkbox" checked={f.track_expiry} onChange={(e) => set('track_expiry', e.target.checked)} />{t('Track batches and expiry dates (first to expire, first out)')}</label>}
+          {s.has('weighed') && f.item_type === 'standard' && <label className="check"><input id="item-weight" type="checkbox" checked={f.sold_by_weight} onChange={(e) => setF({ ...f, sold_by_weight: e.target.checked, unit: e.target.checked && f.unit === 'pcs' ? 'kg' : f.unit })} />{t('Sold by weight (price per kg)')}</label>}
           <label className="check"><input id="item-active" type="checkbox" checked={f.is_active} onChange={(e) => set('is_active', e.target.checked)} />{isIng ? t('Active') : t('Active (shown on POS)')}</label>
         </div>
+        {s.has('weighed') && f.sold_by_weight && <label className="field"><span>{t('Scale code (PLU)')}</span><input id="item-plu" inputMode="numeric" value={f.plu} onChange={(e) => set('plu', e.target.value.replace(/\D/g, ''))} placeholder="00042" /></label>}
+        {isService && <label className="field"><span>{t('Duration (minutes)')}</span><input id="item-duration" type="number" min={5} step={5} value={f.duration_min} onChange={(e) => set('duration_min', e.target.value)} /></label>}
+        {s.has('commissions') && !isIng && <label className="field"><span>{t('Staff commission % (blank = staff default)')}</span><input id="item-commission" inputMode="decimal" value={f.commission_pct} onChange={(e) => set('commission_pct', e.target.value)} /></label>}
+        {s.has('modifiers') && !noStock && !isIng && groups.length > 0 && (
+          <fieldset className="span2 events-pick"><legend>{t('Add-ons offered with this item')}</legend>
+            {groups.map((g) => <label key={g.id} className="check"><input type="checkbox" checked={itemGroups.includes(g.id)} onChange={(e) => setItemGroups(e.target.checked ? [...itemGroups, g.id] : itemGroups.filter((x) => x !== g.id))} />{g.name}{g.min_select > 0 && <span className="muted small"> · {t('Required')}</span>}</label>)}
+          </fieldset>)}
+        {isPkg && (
+          <fieldset className="span2 events-pick"><legend>{t('What the package includes')}</legend>
+            <label className="field"><span>{t('Kind')}</span><select id="pkg-kind" value={pkg.kind} onChange={(e) => setPkg({ ...pkg, kind: e.target.value })}>
+              <option value="sessions">{t('A number of sessions')}</option><option value="unlimited">{t('Unlimited visits (membership)')}</option></select></label>
+            {pkg.kind === 'sessions' && <label className="field"><span>{t('Sessions')}</span><input id="pkg-sessions" type="number" min={1} value={pkg.sessions} onChange={(e) => setPkg({ ...pkg, sessions: e.target.value })} /></label>}
+            <label className="field"><span>{t('Valid for (days)')}</span><input id="pkg-days" type="number" min={1} value={pkg.validity_days} onChange={(e) => setPkg({ ...pkg, validity_days: e.target.value })} /></label>
+            <div className="span2"><span className="muted small">{t('Covers (none ticked = any service)')}</span>
+              <div className="row wrap">{services.map((x) => <label key={x.id} className="check"><input type="checkbox" checked={pkg.covers.includes(x.id)} onChange={(e) => setPkg({ ...pkg, covers: e.target.checked ? [...pkg.covers, x.id] : pkg.covers.filter((c) => c !== x.id) })} />{x.name}</label>)}</div></div>
+          </fieldset>)}
         {err && <p className="error span2">{err}</p>}
         <div className="row end span2"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary" disabled={busy}>{t('Save')}</button></div>
       </form>

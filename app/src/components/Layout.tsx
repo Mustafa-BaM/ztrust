@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenCheck, Boxes, ChefHat, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookOpenCheck, Boxes, CalendarDays, ChefHat, ClipboardList, Tag, Clock3, FileText, Languages, LayoutDashboard, LogOut, Package, Receipt, Settings, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { configureHub, hubSettings, useHub } from '../lib/hub'
@@ -9,7 +9,7 @@ import { Logo } from './ui'
 
 const TITLES: Record<string, string> = {
   '/pos': 'Sell', '/dashboard': 'Dashboard', '/sales': 'Sales', '/kds': 'Kitchen', '/shift': 'Shift', '/products': 'Products',
-  '/purchasing': 'Purchasing', '/inventory': 'Inventory', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
+  '/purchasing': 'Purchasing', '/calendar': 'Calendar', '/orders': 'Orders', '/promotions': 'Promotions', '/inventory': 'Inventory', '/customers': 'Customers', '/reports': 'Reports', '/accounting': 'Accounting', '/settings': 'Settings',
 }
 
 /** Dark icon rail + slim top bar: the POS keeps almost the whole screen. */
@@ -29,9 +29,12 @@ export default function Layout() {
     { to: '/pos', label: 'Sell', icon: ShoppingBag, show: s.can('sale.create') },
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: any('sale.create', 'reports.all', 'inventory.view', 'finance.view') },
     { to: '/sales', label: 'Sales', icon: Receipt, show: any('sale.create', 'reports.all') },
+    { to: '/calendar', label: 'Calendar', icon: CalendarDays, show: s.has('appointments') && s.can('sale.create') },
+    { to: '/orders', label: 'Orders', icon: ClipboardList, show: (s.has('job_cards') || s.has('preorders')) && s.can('sale.create') },
     { to: '/kds', label: 'Kitchen', icon: ChefHat, show: s.can('kds.view') && s.has('kitchen') },
     { to: '/shift', label: 'Shift', icon: Clock3, show: s.can('sale.create') },
     { to: '/products', label: 'Products', icon: Package, show: any('catalog.manage', 'inventory.view', 'sale.create') },
+    { to: '/promotions', label: 'Promotions', icon: Tag, show: s.has('promotions') && s.can('catalog.manage') },
     { to: '/inventory', label: 'Inventory', icon: Boxes, show: any('inventory.view', 'inventory.adjust', 'catalog.manage') },
     { to: '/purchasing', label: 'Purchasing', icon: Truck, show: s.has('purchasing') && any('suppliers.manage', 'purchase.create', 'purchase.approve', 'inventory.receive') },
     { to: '/customers', label: 'Customers', icon: Users, show: any('sale.create', 'customers.manage') },

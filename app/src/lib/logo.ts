@@ -7,7 +7,7 @@ const load = (file: Blob) => new Promise<HTMLImageElement>((resolve, reject) => 
   const url = URL.createObjectURL(file)
   const img = new Image()
   img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
-  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This file is not an image we can read. Use PNG, JPG, WebP or SVG.')) }
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This browser cannot read this image (for example HEIC from an iPhone). Save it as PNG or JPG and try again.')) }
   img.src = url
 })
 
@@ -39,10 +39,10 @@ export function dither(px: Uint8ClampedArray, w: number, h: number) {
 }
 
 export async function prepareLogo(file: File): Promise<{ color: Blob; mono: Blob }> {
-  if (file.size > 5 * 1024 * 1024) throw new Error('The logo file is larger than 5 MB.')
+  if (file.size > 25 * 1024 * 1024) throw new Error('The logo file is larger than 25 MB.')
   const img = await load(file)
   const color = await toBlob(draw(img, 512, 512))
-  const c = draw(img, 576, 240)
+  const c = draw(img, 384, 200)
   const g = c.getContext('2d')!
   const data = g.getImageData(0, 0, c.width, c.height)
   dither(data.data, c.width, c.height)

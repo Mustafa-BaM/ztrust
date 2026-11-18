@@ -145,6 +145,7 @@ function PoDetail({ po, onClose, onEdit, onChanged }: { po: PurchaseOrder; onClo
   const approval = useApproval()
   const [mode, setMode] = useState<null | 'receive' | 'cancel'>(null)
   const [qty, setQty] = useState<Record<string, string>>({})
+  const [batch, setBatch] = useState<Record<string, { batch_no: string; expiry: string }>>({})
   const [ref, setRef] = useState('')
   const [reason, setReason] = useState('')
   const [people, setPeople] = useState<Record<string, string>>({})
@@ -159,7 +160,9 @@ function PoDetail({ po, onClose, onEdit, onChanged }: { po: PurchaseOrder; onClo
   async function cancel() { const r = await approval.run(() => rpc('cancel_po', { p_po: po.id, p_reason: reason }).then(() => true)); if (r) { setMode(null); await onChanged() } }
   async function receive() {
     const lines = Object.entries(qty).filter(([, v]) => parseFloat(v) > 0).map(([line_id, v]) => ({ line_id, qty: parseFloat(v) }))
-    const r = await approval.run(() => rpc('receive_po', { p: { po_id: po.id, supplier_ref: ref, lines } }))
+    // items with expiry tracking: batch number and expiry date per received line (keyed by item)
+    const batches = Object.fromEntries((po.purchase_order_lines ?? []).filter((l) => batch[l.id]?.batch_no && parseFloat(qty[l.id] ?? '') > 0).map((l) => [l.item_id, { batch_no: batch[l.id].batch_no, expiry: batch[l.id].expiry || null }]))
+    const r = await approval.run(() => rpc(s.has('batches') ? 'receive_po_batches' : 'receive_po', { p: { po_id: po.id, supplier_ref: ref, lines, ...(s.has('batches') ? { batches } : {}) } }))
     if (r) { setMode(null); setQty({}); await onChanged() }
   }
   const remainingAll = () => setQty(Object.fromEntries((po.purchase_order_lines ?? []).map((l) => [l.id, String(Number(l.qty) - Number(l.received_qty))])))
@@ -174,11 +177,14 @@ function PoDetail({ po, onClose, onEdit, onChanged }: { po: PurchaseOrder; onClo
         {po.note && <p className="muted">{po.note}</p>}
         {po.cancelled_reason && <p className="error">{t('Cancelled')}: {po.cancelled_reason}</p>}
         <div className="table-wrap"><table className="list">
-          <thead><tr><th>{t('Item')}</th><th className="num">{t('Ordered')}</th><th className="num">{t('Received')}</th><th className="num">{t('Unit cost')}</th><th className="num">{t('Total')}</th>{mode === 'receive' && <th>{t('Receive now')}</th>}</tr></thead>
+          <thead><tr><th>{t('Item')}</th><th className="num">{t('Ordered')}</th><th className="num">{t('Received')}</th><th className="num">{t('Unit cost')}</th><th className="num">{t('Total')}</th>{mode === 'receive' && <th>{t('Receive now')}</th>}{mode === 'receive' && s.has('batches') && <th>{t('Batch / expiry')}</th>}</tr></thead>
           <tbody>{(po.purchase_order_lines ?? []).map((l) => (
             <tr key={l.id}><td>{itemName(l.item_id)}</td><td className="num">{Number(l.qty)}</td><td className="num">{Number(l.received_qty)}</td>
               <td className="num">{num(l.unit_cost, tn.currency_decimals)}</td><td className="num">{num(Math.round(Number(l.qty) * l.unit_cost), tn.currency_decimals)}</td>
               {mode === 'receive' && <td><input id={`rcv-${l.id}`} className="qty-in" inputMode="decimal" value={qty[l.id] ?? ''} placeholder={String(Number(l.qty) - Number(l.received_qty))} onChange={(e) => setQty({ ...qty, [l.id]: e.target.value })} /></td>}
+              {mode === 'receive' && s.has('batches') && <td>{items.find((i) => i.id === l.item_id)?.track_expiry ? <div className="row">
+                <input id={`rcv-batch-${l.id}`} className="batch-in" placeholder={t('Batch')} value={batch[l.id]?.batch_no ?? ''} onChange={(e) => setBatch({ ...batch, [l.id]: { batch_no: e.target.value, expiry: batch[l.id]?.expiry ?? '' } })} />
+                <input id={`rcv-exp-${l.id}`} type="date" aria-label={t('Expiry date')} value={batch[l.id]?.expiry ?? ''} onChange={(e) => setBatch({ ...batch, [l.id]: { batch_no: batch[l.id]?.batch_no ?? '', expiry: e.target.value } })} /></div> : '—'}</td>}
             </tr>))}</tbody>
         </table></div>
         <div className="row end"><b>{t('Total')}: {fmt(po.total, tn, lang)}</b></div>
