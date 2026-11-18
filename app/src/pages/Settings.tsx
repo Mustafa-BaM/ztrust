@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
 import { useSession } from '../lib/session'
-import { rpc, supabase } from '../lib/supabase'
+import { rpc, supabase, supabaseUrl } from '../lib/supabase'
 import type { Category, DeliveryChannel, Membership, PermDef, RolePkg, RoleTemplate, Station } from '../lib/types'
 import { Receipt, type ReceiptData } from '../components/Receipt'
 import { num, toMinor } from '../lib/money'
@@ -367,7 +367,7 @@ function BranchHub() {
   }, [s.branch])
   useEffect(() => { void load() }, [load])
   const online = (h: { last_seen_at: string | null }) => h.last_seen_at && Date.now() - Date.parse(h.last_seen_at) < 3 * 60_000
-  const cmd = token ? `SUPABASE_URL=${import.meta.env.VITE_SUPABASE_URL} SUPABASE_ANON_KEY=<publishable key> HUB_TOKEN=${token} npx z-trust-hub` : ''
+  const cmd = token ? `SUPABASE_URL=${supabaseUrl} SUPABASE_ANON_KEY=<publishable key> HUB_TOKEN=${token} npx z-trust-hub` : ''
   return (
     <div className="card">
       <h2>{t('Branch hub (works without internet)')}</h2>
@@ -510,7 +510,7 @@ function Delivery() {
     setMsg(r.error ? r.error.message : null); await load()
   }
   const upd = async (id: string, patch: Partial<DeliveryChannel>) => { const r = await supabase.from('delivery_channels').update(patch).eq('id', id); setMsg(r.error?.message ?? null); await load() }
-  const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delivery-webhook`
+  const endpoint = `${supabaseUrl}/functions/v1/delivery-webhook`
   return (
     <section className="stack">
       <div className="card">

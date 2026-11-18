@@ -4,6 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // The PWA service worker caches the app shell so the POS reloads and keeps selling with no internet.
 export default defineConfig({
+  // preview from any device: the browser talks to /sb on the app's own address and the dev server forwards it to Supabase
+  server: {
+    allowedHosts: true,
+    proxy: { '/sb': { target: process.env.SUPABASE_PROXY_TARGET || 'http://127.0.0.1:54321', changeOrigin: true, ws: true, rewrite: (p) => p.replace(/^\/sb/, '') } },
+  },
   plugins: [
     react(),
     VitePWA({

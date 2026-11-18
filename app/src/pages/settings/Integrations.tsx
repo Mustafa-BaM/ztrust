@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Empty, Modal } from '../../components/ui'
 import { useT } from '../../lib/i18n'
 import { useSession } from '../../lib/session'
-import { parseError, rpc, supabase } from '../../lib/supabase'
+import { parseError, rpc, supabase, supabaseUrl } from '../../lib/supabase'
 
 interface EventType { key: string; name_en: string; name_ar: string }
 interface Endpoint { id: string; name: string; url: string; events: string[]; is_active: boolean; created_at: string; last_status: number | null; last_at: string | null; failures: number }
@@ -12,7 +12,7 @@ interface ApiKey { id: string; name: string; prefix: string; scopes: string[]; c
 
 const SCOPES = ['items.read', 'stock.read', 'sales.read', 'customers.read'] as const
 const SCOPE_LABEL: Record<string, string> = { 'items.read': 'Products', 'stock.read': 'Stock', 'sales.read': 'Sales', 'customers.read': 'Customers' }
-const apiBase = `${(import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? 'http://localhost:54321'}/functions/v1/public-api/v1`
+const apiBase = `${supabaseUrl}/functions/v1/public-api/v1`
 
 async function copy(text: string, el?: HTMLElement | null) {
   try { await navigator.clipboard.writeText(text) } catch {
