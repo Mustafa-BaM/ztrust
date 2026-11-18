@@ -29,7 +29,7 @@ insert into ax select 'cust', id::text from customers where tenant_id = pg_temp.
 insert into ax select 'sup', id::text from suppliers where tenant_id = pg_temp.v('t')::uuid;
 insert into ax select 'acct_' || system_key, id::text from accounts where tenant_id = pg_temp.v('t')::uuid and system_key is not null;
 do $$ begin
-  assert (select count(*) from accounts where tenant_id = pg_temp.v('t')::uuid) = 38, 'full chart of accounts (incl. delivery platforms, packages, deposits, loyalty)';
+  assert (select count(*) from accounts where tenant_id = pg_temp.v('t')::uuid) = 40, 'full chart of accounts (incl. delivery platforms, packages, deposits, loyalty, gift cards, cash on delivery)';
   assert not exists (select 1 from accounts where tenant_id = pg_temp.v('t')::uuid and (section is null or not is_system)), 'all classified';
 end $$;
 

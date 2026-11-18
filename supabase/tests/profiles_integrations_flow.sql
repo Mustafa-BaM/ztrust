@@ -15,9 +15,9 @@ grant execute on function pg_temp.fails(text) to authenticated, service_role;
 
 -- ---------- catalog
 do $$ begin
-  assert (select count(*) from business_profiles) = 18, 'profiles';
-  assert (select count(*) from business_profiles where launch) = 9, 'launch profiles';
-  assert (select count(*) from feature_modules where built) = 18, 'built modules';
+  assert (select count(*) from business_profiles) = 19, 'profiles';
+  assert (select count(*) from business_profiles where launch) = 15, 'launch profiles';
+  assert (select count(*) from feature_modules where built) = 26, 'built modules';
   assert (select string_agg(key, ',' order by sort) from feature_modules where not built) = 'serials,consignment,quotations,gold_pricing', 'planned modules';
 end $$;
 
