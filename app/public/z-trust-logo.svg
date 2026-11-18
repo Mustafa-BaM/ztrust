@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" width="1040" height="280">
+  <rect width="520" height="140" fill="#F3F5F9"/>
+  <g transform="translate(10,10)">
+    <polygon fill="#2346D8" points="20,20 100,20 100,38 46,82 100,82 106,85 100,88 106,91 100,94 106,97 100,100 20,100 20,82 74,38 20,38 14,35 20,32 14,29 20,26 14,23"/>
+    <circle cx="114" cy="26" r="6" fill="#F2B53A"/>
+  </g>
+  <text x="140" y="92" font-family="Archivo, 'Arial Black', Arial, sans-serif" font-weight="800" font-size="62" fill="#0E1626" style="font-stretch:125%">Z Trust</text>
+  <text x="410" y="126" text-anchor="start" direction="rtl" font-family="'Noto Kufi Arabic', Tahoma, sans-serif" font-weight="700" font-size="20" fill="#2346D8">زد ترست</text>
+</svg>

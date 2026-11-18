@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+app/.env.local
+hub/data/
+supabase/.temp/
+supabase/.branches/
+*.tar.gz
+*.log

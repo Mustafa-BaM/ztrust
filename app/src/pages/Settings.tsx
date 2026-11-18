@@ -1,0 +1,445 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Modal } from '../components/ui'
+import { useName, useT } from '../lib/i18n'
+import { useSession } from '../lib/session'
+import { rpc, supabase } from '../lib/supabase'
+import type { Category, Membership, PermDef, RolePkg, RoleTemplate, Station } from '../lib/types'
+import { WIDGETS, layoutFor } from './Dashboard'
+import { configureHub, detectHub, hubSettings, useHub } from '../lib/hub'
+
+const MODULES: Record<string, string> = {
+  sales: 'Sales and cash', kitchen: 'Kitchen', catalog: 'Products and customers', inventory: 'Inventory',
+  purchasing: 'Purchasing', reports: 'Reports', finance: 'Finance', admin: 'Administration',
+}
+
+export default function Settings() {
+  const { t } = useT()
+  const s = useSession()
+  const owner = s.role === 'owner'
+  const tabs = [
+    { id: 'roles' as const, label: 'Roles & permissions', show: owner },
+    { id: 'staff' as const, label: 'Staff', show: s.can('staff.manage') },
+    { id: 'dash' as const, label: 'Dashboards', show: owner },
+    { id: 'kitchen' as const, label: 'Kitchen stations', show: s.can('settings.manage') },
+    { id: 'business' as const, label: 'Business', show: s.can('settings.manage') },
+    { id: 'device' as const, label: 'This device', show: true },
+  ].filter((x) => x.show)
+  const [tab, setTab] = useState(tabs[0].id)
+  return (
+    <div className="page">
+      <h1>{t('Settings')}</h1>
+      <div className="tabs">{tabs.map((x) => <button key={x.id} className={tab === x.id ? 'on' : ''} onClick={() => setTab(x.id)}>{t(x.label)}</button>)}</div>
+      {tab === 'roles' && <Roles />}
+      {tab === 'staff' && <Staff />}
+      {tab === 'dash' && <Dashboards />}
+      {tab === 'kitchen' && <Kitchen />}
+      {tab === 'business' && <Business />}
+      {tab === 'device' && <Device />}
+    </div>
+  )
+}
+
+/** Role packages: pick a package on the left, tick its permissions and limits on the right. */
+function Roles() {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const unit = 10 ** tn.currency_decimals
+  const [roles, setRoles] = useState<RolePkg[]>([])
+  const [catalog, setCatalog] = useState<PermDef[]>([])
+  const [templates, setTemplates] = useState<RoleTemplate[]>([])
+  const [perms, setPerms] = useState<Record<string, number | null>>({})
+  const [members, setMembers] = useState<Record<string, number>>({})
+  const [sel, setSel] = useState('cashier')
+  const [creating, setCreating] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const label = (r: { name_en: string; name_ar: string }) => (lang === 'ar' ? r.name_ar : r.name_en)
+
+  const load = useCallback(async () => {
+    const [r, c, tp, m] = await Promise.all([
+      supabase.from('roles').select('*').eq('tenant_id', tn.id).order('sort'),
+      supabase.from('permission_catalog').select('*').order('sort'),
+      supabase.from('role_templates').select('*').order('sort'),
+      supabase.from('memberships').select('role').eq('tenant_id', tn.id),
+    ])
+    setRoles((r.data ?? []) as RolePkg[]); setCatalog((c.data ?? []) as PermDef[]); setTemplates((tp.data ?? []) as RoleTemplate[])
+    const cnt: Record<string, number> = {}; for (const x of m.data ?? []) cnt[x.role] = (cnt[x.role] ?? 0) + 1
+    setMembers(cnt)
+  }, [tn.id])
+  const loadPerms = useCallback(async () => {
+    const { data } = await supabase.from('role_permissions').select('permission, limit_value').eq('tenant_id', tn.id).eq('role', sel)
+    const p: Record<string, number | null> = {}; for (const x of data ?? []) p[x.permission] = x.limit_value
+    setPerms(p)
+  }, [tn.id, sel])
+  useEffect(() => { void load() }, [load])
+  useEffect(() => { void loadPerms() }, [loadPerms])
+
+  const role = roles.find((r) => r.key === sel)
+  const grouped = useMemo(() => {
+    const g: Record<string, PermDef[]> = {}
+    for (const p of catalog) (g[p.module] ??= []).push(p)
+    return g
+  }, [catalog])
+
+  async function toggle(p: PermDef, on: boolean) {
+    const r = on
+      ? await supabase.from('role_permissions').insert({ tenant_id: tn.id, role: sel, permission: p.key, limit_value: null })
+      : await supabase.from('role_permissions').delete().eq('tenant_id', tn.id).eq('role', sel).eq('permission', p.key)
+    setMsg(r.error ? r.error.message : null); await loadPerms()
+  }
+  async function setLimit(p: PermDef, raw: string) {
+    const v = raw.trim() === '' ? null : p.limit_kind === 'money' ? Math.round(parseFloat(raw) * unit) : parseFloat(raw)
+    if (v !== null && !Number.isFinite(v)) return
+    const r = await supabase.from('role_permissions').update({ limit_value: v }).eq('tenant_id', tn.id).eq('role', sel).eq('permission', p.key)
+    setMsg(r.error ? r.error.message : t('Saved')); await loadPerms()
+  }
+  async function remove() {
+    if (!role || role.is_system) return
+    const r = await supabase.from('roles').delete().eq('tenant_id', tn.id).eq('key', role.key)
+    if (r.error) setMsg(members[role.key] ? t('Move the staff in this role to another role first.') : r.error.message)
+    else { setSel('cashier'); await load(); await s.reload() }
+  }
+
+  return (
+    <section className="roles">
+      <aside className="card role-list">
+        <div className="row between"><h2>{t('Role packages')}</h2><button className="primary small" onClick={() => setCreating(true)}>{t('New role')}</button></div>
+        <ul className="plain">{roles.map((r) => (
+          <li key={r.key}><button className={`role-item ${sel === r.key ? 'on' : ''}`} onClick={() => setSel(r.key)}>
+            <b>{label(r)}</b><span className="muted small">{[members[r.key] ? t('{n} staff', { n: members[r.key] }) : '', !r.is_system ? t('custom') : ''].filter(Boolean).join(' · ')}</span>
+          </button></li>))}</ul>
+      </aside>
+      <div className="card">
+        {role && (
+          <>
+            <div className="row between wrap">
+              <div><h2>{label(role)}</h2><p className="muted small">{lang === 'ar' ? role.description_ar : role.description_en}</p></div>
+              {!role.is_system && <button className="danger small" onClick={() => void remove()}>{t('Delete role')}</button>}
+            </div>
+            {role.key === 'owner' ? <p className="muted">{t('The owner always has every permission.')}</p> : (
+              <div className="perm-groups">
+                {Object.entries(grouped).map(([mod, list]) => (
+                  <fieldset key={mod} className="perm-group">
+                    <legend>{t(MODULES[mod] ?? mod)}</legend>
+                    {list.map((p) => {
+                      const has = p.key in perms
+                      const lim = perms[p.key]
+                      return (
+                        <div key={p.key} className="perm-row">
+                          <label className="check"><input id={`p-${p.key}`} type="checkbox" checked={has} onChange={(e) => void toggle(p, e.target.checked)} />{label(p)}</label>
+                          {has && p.limit_kind && (
+                            <span className="row">
+                              <input key={`${sel}-${p.key}-${lim}`} id={`lim-${p.key}`} className="lim" inputMode="decimal" aria-label={t('Limit')} placeholder="∞"
+                                defaultValue={lim == null ? '' : p.limit_kind === 'money' ? String(lim / unit) : String(lim)}
+                                onBlur={(e) => void setLimit(p, e.target.value)} />
+                              <span className="muted small">{p.limit_kind === 'pct' ? '%' : tn.currency}</span>
+                            </span>)}
+                        </div>)
+                    })}
+                  </fieldset>))}
+              </div>
+            )}
+            <p className="muted small">{t('Limits are checked by the database on every action. Above the limit, a manager with a higher limit approves with their PIN.')}</p>
+            {msg && <p className="muted">{msg}</p>}
+          </>
+        )}
+      </div>
+      {creating && <NewRole templates={templates} catalog={catalog} onClose={() => setCreating(false)}
+        onCreated={async (key) => { setCreating(false); await load(); await s.reload(); setSel(key) }} />}
+    </section>
+  )
+}
+
+function NewRole({ templates, catalog, onClose, onCreated }: { templates: RoleTemplate[]; catalog: PermDef[]; onClose: () => void; onCreated: (key: string) => void }) {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [f, setF] = useState({ name_en: '', name_ar: '', template: 'cashier' })
+  const [err, setErr] = useState<string | null>(null)
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setErr(null)
+    const key = (f.name_en.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'role').replace(/^([^a-z])/, 'r_$1').slice(0, 28) + '_' + Math.random().toString(36).slice(2, 5)
+    const tpl = templates.find((x) => x.key === f.template)
+    const r = await supabase.from('roles').insert({ tenant_id: tn.id, key, name_en: f.name_en.trim(), name_ar: f.name_ar.trim() || f.name_en.trim(), template: f.template,
+      description_en: tpl ? `Based on ${tpl.name_en}` : null, description_ar: tpl ? `مبني على ${tpl.name_ar}` : null })
+    if (r.error) return setErr(r.error.message)
+    const unit = 10 ** tn.currency_decimals
+    const rows = Object.entries(tpl?.perms ?? {}).map(([permission, v]) => ({
+      tenant_id: tn.id, role: key, permission,
+      limit_value: v == null ? null : catalog.find((c) => c.key === permission)?.limit_kind === 'money' ? v * unit : v,
+    }))
+    if (rows.length) { const p = await supabase.from('role_permissions').insert(rows); if (p.error) return setErr(p.error.message) }
+    onCreated(key)
+  }
+  return (
+    <Modal title={t('New role')} onClose={onClose}>
+      <form className="stack" onSubmit={save}>
+        <label className="field"><span>{t('Name (English)')}</span><input id="nr-en" required value={f.name_en} onChange={(e) => setF({ ...f, name_en: e.target.value })} placeholder="Night cashier" /></label>
+        <label className="field"><span>{t('Name (Arabic)')}</span><input id="nr-ar" dir="rtl" value={f.name_ar} onChange={(e) => setF({ ...f, name_ar: e.target.value })} placeholder="كاشير ليلي" /></label>
+        <label className="field"><span>{t('Start from')}</span>
+          <select id="nr-tpl" value={f.template} onChange={(e) => setF({ ...f, template: e.target.value })}>
+            {templates.filter((x) => x.key !== 'owner').map((x) => <option key={x.key} value={x.key}>{lang === 'ar' ? x.name_ar : x.name_en}</option>)}
+          </select></label>
+        {err && <p className="error">{err}</p>}
+        <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary">{t('Create role')}</button></div>
+      </form>
+    </Modal>
+  )
+}
+
+function Staff() {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [list, setList] = useState<Membership[]>([])
+  const assignable = s.roles.filter((r) => r.key !== 'owner')
+  const [inv, setInv] = useState({ email: '', display_name: '', role: 'cashier' })
+  const [msg, setMsg] = useState<string | null>(null)
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('memberships').select('tenant_id,user_id,role,display_name,branch_ids,is_active').eq('tenant_id', tn.id).order('display_name')
+    setList((data ?? []) as Membership[])
+  }, [tn.id])
+  useEffect(() => { void load() }, [load])
+
+  async function invite(e: React.FormEvent) {
+    e.preventDefault(); setMsg(null)
+    const { data, error } = await supabase.functions.invoke('invite-staff', { body: { tenant_id: tn.id, ...inv } })
+    setMsg(error ? error.message : (data as { message?: string })?.message ?? t('Invitation sent'))
+    if (!error) { setInv({ email: '', display_name: '', role: 'cashier' }); await load() }
+  }
+  async function update(m: Membership, patch: Partial<Membership>) {
+    const { error } = await supabase.from('memberships').update(patch).eq('tenant_id', tn.id).eq('user_id', m.user_id)
+    setMsg(error ? error.message : t('Saved')); await load()
+  }
+  const roleOptions = assignable.map((r) => <option key={r.key} value={r.key}>{lang === 'ar' ? r.name_ar : r.name_en}</option>)
+
+  return (
+    <section className="stack">
+      <div className="card table-wrap"><table className="list">
+        <thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Branches')}</th><th>{t('Active')}</th></tr></thead>
+        <tbody>{list.map((m) => (
+          <tr key={m.user_id}><td>{m.display_name}</td>
+            <td>{m.role === 'owner' ? s.roleName('owner', lang) : (
+              <select id={`role-${m.user_id}`} value={m.role} onChange={(e) => void update(m, { role: e.target.value })}>{roleOptions}</select>)}</td>
+            <td>{m.role === 'owner' ? t('All branches') : (
+              <select id={`br-${m.user_id}`} value={m.branch_ids?.[0] ?? ''} onChange={(e) => void update(m, { branch_ids: e.target.value ? [e.target.value] : null })}>
+                <option value="">{t('All branches')}</option>{s.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>)}</td>
+            <td>{m.role !== 'owner' && <input id={`act-${m.user_id}`} type="checkbox" checked={m.is_active} onChange={(e) => void update(m, { is_active: e.target.checked })} />}</td>
+          </tr>))}</tbody>
+      </table></div>
+      <form className="card grid2" onSubmit={invite}>
+        <h2 className="span2">{t('Invite staff')}</h2>
+        <label className="field"><span>{t('E-mail')}</span><input id="inv-email" type="email" required value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} /></label>
+        <label className="field"><span>{t('Name')}</span><input id="inv-name" required value={inv.display_name} onChange={(e) => setInv({ ...inv, display_name: e.target.value })} /></label>
+        <label className="field"><span>{t('Role')}</span><select id="inv-role" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select></label>
+        <div className="row end"><button className="primary">{t('Send invitation')}</button></div>
+        {msg && <p className="muted span2">{msg}</p>}
+      </form>
+    </section>
+  )
+}
+
+function Dashboards() {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [layouts, setLayouts] = useState<Record<string, string[]>>({})
+  useEffect(() => {
+    void supabase.from('dashboard_layouts').select('*').eq('tenant_id', tn.id).then(({ data }) => {
+      const m: Record<string, string[]> = {}; for (const r of data ?? []) m[r.role] = r.widgets; setLayouts(m)
+    })
+  }, [tn.id])
+  async function toggle(role: string, w: string, on: boolean) {
+    const cur = layouts[role] ?? layoutFor(role)
+    const next = on ? [...cur, w] : cur.filter((x) => x !== w)
+    setLayouts({ ...layouts, [role]: next })
+    await supabase.from('dashboard_layouts').upsert({ tenant_id: tn.id, role, widgets: next })
+  }
+  return (
+    <section className="card">
+      <p className="muted">{t('Choose what each role sees on its dashboard. A widget never shows data the role is not allowed to read.')}</p>
+      <div className="table-wrap"><table className="list matrix">
+        <thead><tr><th>{t('Widget')}</th>{s.roles.map((r) => <th key={r.key}>{lang === 'ar' ? r.name_ar : r.name_en}</th>)}</tr></thead>
+        <tbody>{WIDGETS.map((w) => (
+          <tr key={w.id}><td>{t(w.label)}</td>{s.roles.map((r) => (
+            <td key={r.key}><input id={`dw-${r.key}-${w.id}`} type="checkbox" aria-label={`${w.label} · ${r.name_en}`}
+              checked={(layouts[r.key] ?? layoutFor(r.key)).includes(w.id)} onChange={(e) => void toggle(r.key, w.id, e.target.checked)} /></td>))}</tr>))}</tbody>
+      </table></div>
+    </section>
+  )
+}
+
+/** Stations per branch and which product categories go to which station. */
+function Kitchen() {
+  const { t } = useT()
+  const nameOf = useName()
+  const s = useSession()
+  const tn = s.tenant!
+  const branch = s.branch!
+  const [stations, setStations] = useState<Station[]>([])
+  const [cats, setCats] = useState<Category[]>([])
+  const [name, setName] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const load = useCallback(async () => {
+    const [st, c] = await Promise.all([
+      supabase.from('kitchen_stations').select('*').eq('branch_id', branch.id).order('sort'),
+      supabase.from('categories').select('*').eq('tenant_id', tn.id).order('sort'),
+    ])
+    setStations((st.data ?? []) as Station[]); setCats((c.data ?? []) as Category[])
+  }, [branch.id, tn.id])
+  useEffect(() => { void load() }, [load])
+  const upd = async (id: string, patch: Partial<Station>) => {
+    if (patch.is_default) await supabase.from('kitchen_stations').update({ is_default: false }).eq('branch_id', branch.id)
+    const r = await supabase.from('kitchen_stations').update(patch).eq('id', id); setMsg(r.error?.message ?? null); await load()
+  }
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    const r = await supabase.from('kitchen_stations').insert({ tenant_id: tn.id, branch_id: branch.id, name: name.trim(), is_default: stations.length === 0 })
+    setMsg(r.error?.message ?? null); setName(''); await load()
+  }
+  async function route(c: Category, station: string) {
+    const r = await supabase.from('categories').update({ station_id: station || null }).eq('id', c.id); setMsg(r.error?.message ?? null); await load()
+  }
+  return (
+    <section className="stack">
+      <div className="card">
+        <h2>{t('Stations')} · {nameOf(branch)}</h2>
+        <div className="table-wrap"><table className="list">
+          <thead><tr><th>{t('Name')}</th><th>{t('Output')}</th><th>{t('Printer IP (network)')}</th><th>{t('Paper')}</th><th>{t('Late after (min)')}</th><th>{t('Default')}</th><th>{t('Active')}</th></tr></thead>
+          <tbody>{stations.map((x) => (
+            <tr key={x.id}>
+              <td><input id={`st-name-${x.id}`} defaultValue={x.name} onBlur={(e) => e.target.value.trim() && e.target.value !== x.name && void upd(x.id, { name: e.target.value.trim() })} /></td>
+              <td><select id={`st-mode-${x.id}`} value={x.mode} onChange={(e) => void upd(x.id, { mode: e.target.value as Station['mode'] })}>
+                <option value="kds">{t('Screen (KDS)')}</option><option value="printer">{t('Kitchen printer')}</option><option value="both">{t('Screen + printer')}</option></select></td>
+              <td><input id={`st-ip-${x.id}`} className="ip-in" inputMode="decimal" placeholder="192.168.1.50" defaultValue={x.printer_ip ?? ''}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== (x.printer_ip ?? '')) void upd(x.id, { printer_ip: v || null }) }} /></td>
+              <td><select id={`st-w-${x.id}`} value={x.printer_width ?? 80} onChange={(e) => void upd(x.id, { printer_width: Number(e.target.value) })}><option value={80}>80 mm</option><option value={58}>58 mm</option></select></td>
+              <td><input id={`st-alert-${x.id}`} className="lim" inputMode="numeric" defaultValue={x.alert_minutes} onBlur={(e) => { const v = parseInt(e.target.value); if (v > 0) void upd(x.id, { alert_minutes: v }) }} /></td>
+              <td><input id={`st-def-${x.id}`} type="radio" name="default-station" checked={x.is_default} onChange={() => void upd(x.id, { is_default: true })} /></td>
+              <td><input id={`st-act-${x.id}`} type="checkbox" checked={x.is_active} onChange={(e) => void upd(x.id, { is_active: e.target.checked })} /></td>
+            </tr>))}</tbody>
+        </table></div>
+        <form className="row" onSubmit={add}><input id="st-new" placeholder={t('New station, e.g. Grill, Bar, Pastry')} value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="primary" disabled={!name.trim()}>{t('Add')}</button></form>
+      </div>
+      <div className="card">
+        <h2>{t('Routing by category')}</h2>
+        <p className="muted small">{t('Items go to the station of their category. Categories without a station go to the default station.')}</p>
+        <div className="table-wrap"><table className="list"><tbody>{cats.map((c) => (
+          <tr key={c.id}><td>{nameOf(c)}</td><td>
+            <select id={`route-${c.id}`} value={c.station_id ?? ''} onChange={(e) => void route(c, e.target.value)}>
+              <option value="">{t('Default station')}</option>{stations.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select></td></tr>))}</tbody></table></div>
+      </div>
+      <BranchHub />
+      {msg && <p className="error">{msg}</p>}
+    </section>
+  )
+}
+
+/** Creates the token a Branch Hub uses; shows it once with the command to start the hub. */
+function BranchHub() {
+  const { t } = useT()
+  const s = useSession()
+  const [hubs, setHubs] = useState<Array<{ id: string; name: string; last_seen_at: string | null; version: string | null; is_active: boolean }>>([])
+  const [name, setName] = useState('Counter PC')
+  const [token, setToken] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('hubs').select('id, name, last_seen_at, version, is_active').eq('branch_id', s.branch!.id).order('created_at')
+    setHubs((data ?? []) as typeof hubs)
+  }, [s.branch])
+  useEffect(() => { void load() }, [load])
+  const online = (h: { last_seen_at: string | null }) => h.last_seen_at && Date.now() - Date.parse(h.last_seen_at) < 3 * 60_000
+  const cmd = token ? `SUPABASE_URL=${import.meta.env.VITE_SUPABASE_URL} SUPABASE_ANON_KEY=<publishable key> HUB_TOKEN=${token} npx z-trust-hub` : ''
+  return (
+    <div className="card">
+      <h2>{t('Branch hub (works without internet)')}</h2>
+      <p className="muted small">{t('Install the hub on one always-on device in this branch (PC, mini-PC or Raspberry Pi). POS devices, kitchen screens and network printers on the same Wi-Fi keep exchanging orders when the internet is down, and the hub syncs everything to the cloud when it returns.')}</p>
+      {hubs.length > 0 && <ul className="plain">{hubs.map((h) => (
+        <li key={h.id} className="row between"><span><b>{h.name}</b> <span className="muted small">{h.version ? `v${h.version}` : ''}</span></span>
+          <span className={`pill ${online(h) ? '' : 'warn'}`}>{online(h) ? t('Online') : h.last_seen_at ? `${t('Last seen')} ${new Date(h.last_seen_at).toLocaleString()}` : t('Not started yet')}</span></li>))}</ul>}
+      {token ? (
+        <div className="amber-note stack">
+          <b>{t('Copy this token now. It is shown only once.')}</b>
+          <code className="token">{token}</code>
+          <span className="small">{t('Start the hub with:')}</span><code className="token">{cmd}</code>
+          <span className="small">{t('Then open the address it prints on every POS and kitchen tablet, and enter the pairing code it shows once on each device.')}</span>
+          <button onClick={() => { navigator.clipboard?.writeText(token).catch(() => undefined) }}>{t('Copy token')}</button>
+        </div>
+      ) : (
+        <form className="row" onSubmit={async (e) => { e.preventDefault(); setErr(null); try { setToken(await rpc<string>('create_hub', { p_branch: s.branch!.id, p_name: name })); await load() } catch (x) { setErr((x as Error).message) } }}>
+          <input id="hub-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="primary">{t('Create hub token')}</button>
+        </form>
+      )}
+      {err && <p className="error">{err}</p>}
+    </div>
+  )
+}
+
+function Business() {
+  const { t } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [f, setF] = useState({ name: tn.name, name_ar: tn.name_ar ?? '', tax_number: tn.tax_number ?? '', brand_color: tn.brand_color ?? '#2346D8' })
+  const [msg, setMsg] = useState<string | null>(null)
+  async function save() {
+    const { error } = await supabase.from('tenants').update({ name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, brand_color: f.brand_color }).eq('id', tn.id)
+    setMsg(error ? error.message : t('Saved')); if (!error) await s.reload()
+  }
+  return (
+    <section className="card grid2">
+      <label className="field"><span>{t('Business name (English)')}</span><input id="b-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+      <label className="field"><span>{t('Business name (Arabic)')}</span><input id="b-name-ar" dir="rtl" value={f.name_ar} onChange={(e) => setF({ ...f, name_ar: e.target.value })} /></label>
+      <label className="field"><span>{t('VAT / tax number (optional)')}</span><input id="b-tax" value={f.tax_number} onChange={(e) => setF({ ...f, tax_number: e.target.value })} /></label>
+      <label className="field"><span>{t('Brand colour')}</span><input id="b-color" type="color" value={f.brand_color} onChange={(e) => setF({ ...f, brand_color: e.target.value })} /></label>
+      <p className="muted span2">{t('Country')}: {tn.country_code} · {tn.currency} · {t('VAT')} {tn.vat_rate}% · {tn.prices_include_tax ? t('Prices include VAT') : t('VAT added at checkout')}</p>
+      <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
+    </section>
+  )
+}
+
+function Device() {
+  const { t } = useT()
+  const s = useSession()
+  const [pin, setPin] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [paper, setPaper] = useState(() => { try { return localStorage.getItem('zt.paper') || '80' } catch { return '80' } })
+  return (
+    <section className="card grid2">
+      <form className="stack" onSubmit={async (e) => { e.preventDefault(); try { await rpc('set_my_pin', { p_tenant: s.tenant!.id, p_pin: pin }); setMsg(t('PIN updated')); setPin('') } catch (x) { setMsg((x as Error).message) } }}>
+        <label className="field"><span>{t('My approval PIN (4–6 digits)')}</span><input id="my-pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} /></label>
+        <button className="primary" disabled={pin.length < 4}>{t('Save PIN')}</button>
+      </form>
+      <HubPairing />
+      <label className="field"><span>{t('Receipt paper width')}</span>
+        <select id="paper" value={paper} onChange={(e) => { setPaper(e.target.value); try { localStorage.setItem('zt.paper', e.target.value) } catch { /* ignore */ } }}>
+          <option value="80">80 mm</option><option value="58">58 mm</option><option value="a4">A4</option></select></label>
+      {msg && <p className="muted span2">{msg}</p>}
+    </section>
+  )
+}
+
+
+function HubPairing() {
+  const { t } = useT()
+  const hub = useHub()
+  const cur = hubSettings()
+  const [url, setUrl] = useState(cur.url ?? '')
+  const [code, setCode] = useState(cur.code ?? '')
+  useEffect(() => { if (!url) void detectHub().then((u) => { if (u) setUrl(u) }) }, [url])
+  return (
+    <form className="stack span2 card" onSubmit={(e) => { e.preventDefault(); configureHub(url.trim() || null, code.trim() || null) }}>
+      <h2>{t('Branch hub on this device')}</h2>
+      <div className="grid2">
+        <label className="field"><span>{t('Hub address')}</span><input id="hub-url" placeholder="http://192.168.1.20:8787" value={url} onChange={(e) => setUrl(e.target.value)} /></label>
+        <label className="field"><span>{t('Pairing code')}</span><input id="hub-code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} /></label>
+      </div>
+      <div className="row between wrap">
+        <span className={`hub-badge ${hub.status}`}>{hub.status === 'connected' ? t('Connected to the hub') : hub.status === 'error' && hub.error === 'pairing_code' ? t('Wrong or missing pairing code') : hub.status === 'connecting' ? t('Connecting…') : t('Not using a hub')}</span>
+        <div className="row"><button type="button" className="ghost" onClick={() => { setUrl(''); setCode(''); configureHub(null, null) }}>{t('Stop using hub')}</button><button className="primary">{t('Connect')}</button></div>
+      </div>
+    </form>
+  )
+}
