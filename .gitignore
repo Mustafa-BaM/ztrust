@@ -8,3 +8,5 @@ supabase/.temp/
 supabase/.branches/
 *.tar.gz
 *.log
+app/audit/
+app/shots/
