@@ -8,7 +8,7 @@ import { Modal } from './ui'
 
 const TENDERS: Tender[] = ['cash', 'card', 'on_account', 'payment_link', 'bank_transfer', 'store_credit']
 
-/** Card networks and wallets per country, first is the default. Stored with the payment so the tender report splits them. */
+/** Default card networks and wallets per country (first = default). A business can replace the list in Settings. Stored with the payment so the tender report splits them. */
 export const CARD_METHODS: Record<string, string[]> = {
   KW: ['K-Net', 'Visa / Mastercard', 'Apple Pay'],
   SA: ['mada', 'Visa / Mastercard', 'Apple Pay', 'STC Pay'],
@@ -18,11 +18,20 @@ export const CARD_METHODS: Record<string, string[]> = {
   OM: ['OmanNet', 'Visa / Mastercard', 'Apple Pay'],
 }
 export const cardMethods = (country: string) => CARD_METHODS[country] ?? ['Visa / Mastercard', 'Apple Pay']
+/** What this business offers: its own list from Settings, else the country's usual networks. */
+export const methodsFor = (t: Pick<Tenant, 'country_code' | 'settings'>) => (t.settings?.card_methods?.length ? t.settings.card_methods : cardMethods(t.country_code))
+
+/** Banknotes per currency (major units); a business can set its own in Settings. */
+const CASH_NOTES: Record<string, number[]> = {
+  KWD: [0.25, 0.5, 1, 5, 10, 20], BHD: [0.5, 1, 5, 10, 20], OMR: [0.1, 0.5, 1, 5, 10, 20, 50], JOD: [1, 5, 10, 20, 50],
+  SAR: [5, 10, 50, 100, 200, 500], AED: [5, 10, 20, 50, 100, 200, 500], QAR: [1, 5, 10, 50, 100, 500], EGP: [5, 10, 20, 50, 100, 200],
+  USD: [1, 5, 10, 20, 50, 100], EUR: [5, 10, 20, 50, 100, 200], GBP: [5, 10, 20, 50], JPY: [1000, 5000, 10000],
+}
+export const notesFor = (t: Pick<Tenant, 'currency' | 'settings'>) => (t.settings?.cash_notes?.length ? t.settings.cash_notes : CASH_NOTES[t.currency] ?? [1, 5, 10, 20, 50, 100])
 
 /** Suggests the next banknotes above the amount due. */
-function quickCash(due: number, decimals: number): number[] {
+function quickCash(due: number, decimals: number, notes: number[]): number[] {
   const unit = 10 ** decimals
-  const notes = decimals === 3 ? [0.25, 0.5, 1, 5, 10, 20] : [1, 5, 10, 20, 50, 100, 200, 500]
   const out = new Set<number>([due])
   for (const n of notes) { const v = Math.ceil(due / (n * unit)) * n * unit; if (v >= due) out.add(v) }
   return [...out].sort((a, b) => a - b).slice(0, 5)
@@ -54,7 +63,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
   const [amount, setAmount] = useState(num(total, d))
   const [ref, setRef] = useState('')
   const [channel, setChannel] = useState(channels[0]?.id ?? '')
-  const methods = cardMethods(tenant.country_code)
+  const methods = methodsFor(tenant)
   const [method, setMethod] = useState(methods[0])
   const input = useRef<HTMLInputElement>(null)
 
@@ -77,11 +86,23 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
   }
   const usedPts = entries.filter((e) => e.tender === 'loyalty').reduce((a, e) => a + e.amount, 0)
   const disabled = (x: Tender) => (needsCustomer(x) && !customer) || (x === 'payment_link' && !online) || (x === 'loyalty' && (!online || (points ?? 0) < Math.max(minPts, 1) || pointsValue - usedPts <= 0))
-  const suggestions = useMemo(() => quickCash(Math.max(remaining, 0), d), [remaining, d])
+  const suggestions = useMemo(() => quickCash(Math.max(remaining, 0), d, notesFor(tenant)), [remaining, d])
+
+  // cash ceiling per invoice (Settings → Business): warn or block above it
+  const cashLimit = Number(tenant.settings?.cash_limit ?? 0), cashMode = String(tenant.settings?.cash_limit_mode ?? 'off')
+  const cashSoFar = entries.filter((e) => e.tender === 'cash').reduce((a, e) => a + e.amount, 0)
+  const overCash = (add: number) => cashMode !== 'off' && cashLimit > 0 && cashSoFar + add > cashLimit
+  const [cashWarn, setCashWarn] = useState<string | null>(null)
 
   function add(value?: number) {
     const v = value ?? toMinor(amount, d)
     if (!Number.isFinite(v) || v <= 0 || remaining <= 0 || disabled(tender)) return
+    setCashWarn(null)
+    if (tender === 'cash' && overCash(Math.min(v, remaining))) {
+      const msg = t('Cash on one invoice is limited to {v}. Take the rest by card or another method.', { v: fmt(cashLimit, tenant, lang) })
+      if (cashMode === 'block') { setCashWarn(msg); setAmount(num(Math.max(cashLimit - cashSoFar, 0), d)); return }
+      setCashWarn(msg)
+    }
     if (tender === 'cash' && v > remaining) {
       setChange(v - remaining)
       setEntries([...entries, { tender: 'cash', amount: remaining }])
@@ -139,6 +160,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
             <button className="primary" type="submit">{t('Add payment')}</button>
           </form>
         )}
+        {cashWarn && <p className={cashMode === 'block' ? 'error' : 'amber-note'} role="alert">{cashWarn}</p>}
         {remaining > 0 && tender === 'cash' && (
           <div className="quick">{suggestions.map((v) => <button key={v} className="chipbtn" onClick={() => add(v)}>{num(v, d)}</button>)}</div>
         )}

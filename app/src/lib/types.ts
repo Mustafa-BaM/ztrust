@@ -27,6 +27,20 @@ export interface TenantSettings {
   scale_prefix?: string; scale_plu_len?: number; scale_mode?: 'weight' | 'price'
   loyalty_earn?: number; loyalty_point_value?: number; loyalty_min_points?: number
   booking_online?: boolean; booking_step?: number; gift_card_months?: number; qr_ordering?: boolean
+  /** cash ceiling per invoice, in minor units; off / warn on the till / block (also enforced by the server) */
+  cash_limit?: number; cash_limit_mode?: 'off' | 'warn' | 'block'
+  /** card networks and wallets offered on the till (default from the country) */
+  card_methods?: string[]
+  /** banknotes for quick cash buttons, in major units (default from the currency) */
+  cash_notes?: number[]
+  /** days a quotation stays valid */
+  quote_valid_days?: number
+  /** HR rules (defaults shown in Settings; confirm against the labour law that applies) */
+  hr_annual_leave_days?: number; hr_days_per_month?: number; hr_indemnity_first_days?: number; hr_indemnity_first_years?: number
+  hr_indemnity_after_days?: number; hr_indemnity_cap_months?: number
+  petty_custodian?: string
+  /** receipt labels: both languages (default), English or Arabic */
+  receipt_langs?: 'both' | 'en' | 'ar'
 }
 
 export interface ModifierGroup { id: string; name: string; name_ar: string | null; min_select: number; max_select: number; sort: number }
@@ -64,11 +78,11 @@ export interface Item {
   id: string; tenant_id: string; category_id: string | null; name: string; name_ar: string | null; sku: string | null
   barcode: string | null; price: number; cost: number; tax_rate: number | null; track_stock: boolean; is_active: boolean
   image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe' | 'service' | 'package' | 'gift_card'; unit?: string; reorder_point?: number | null
-  parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null
+  parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null; track_serial?: boolean; warranty_months?: number | null
   track_expiry?: boolean; commission_pct?: number | null; duration_min?: number | null
 }
 
-export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number; address?: string | null }
+export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number; address?: string | null; price_list_id?: string | null }
 
 export interface SaleLine {
   id: string; item_id: string | null; name: string; qty: number; unit_price: number; discount: number; tax_rate: number
@@ -89,6 +103,8 @@ export interface Sale {
 export interface CartLine {
   key: string; item_id: string | null; name: string; name_ar: string | null; qty: number; unit_price: number
   list_price: number; discount: number; tax_rate: number; note?: string
+  /** serial / IMEI numbers, one per unit */
+  serials?: string[]
   /** chosen add-ons (prices already included in unit_price / list_price) */
   modifiers?: { id: string; name: string; name_ar: string | null; price: number }[]
   /** discount from a promotion, filled by the promotion engine */
@@ -114,7 +130,7 @@ export interface KitchenTicket {
   created_at: string; started_at: string | null; ready_at: string | null; served_at: string | null; kitchen_ticket_items: KitchenItem[]
 }
 export interface Supplier { id: string; tenant_id: string; name: string; name_ar: string | null; phone: string | null; email: string | null; tax_number: string | null; payment_terms_days: number; is_active: boolean }
-export interface PoLine { id: string; item_id: string; qty: number; unit_cost: number; received_qty: number }
+export interface PoLine { id: string; item_id: string; qty: number; unit_cost: number; received_qty: number; billed_qty?: number }
 export interface PurchaseOrder {
   id: string; tenant_id: string; branch_id: string; supplier_id: string; number: string
   status: 'draft' | 'approved' | 'partially_received' | 'received' | 'cancelled'; total: number; note: string | null

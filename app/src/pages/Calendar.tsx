@@ -26,7 +26,7 @@ export default function Calendar() {
   const s = useSession()
   const nav = useNavigate()
   const tn = s.tenant!
-  const tz = s.branch?.timezone ?? 'Asia/Kuwait'
+  const tz = s.branch?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const [day, setDay] = useState(() => todayIn(tz))
   const [staff, setStaff] = useState<Staff[]>([])
   const [services, setServices] = useState<Item[]>([])
@@ -156,7 +156,7 @@ function NewAppointment({ init, staff, services, customers, onClose, onSaved, on
   async function save(e: React.FormEvent) {
     e.preventDefault(); setErr(null)
     try {
-      await rpc('save_appointment', { p: { branch_id: s.branch!.id, staff_id: f.staff_id, customer_id: customer?.id ?? null, starts_at: zoned(f.date, f.time, s.branch?.timezone ?? 'Asia/Kuwait').toISOString(), service_ids: f.service_ids, note: f.note } })
+      await rpc('save_appointment', { p: { branch_id: s.branch!.id, staff_id: f.staff_id, customer_id: customer?.id ?? null, starts_at: zoned(f.date, f.time, s.branch?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone).toISOString(), service_ids: f.service_ids, note: f.note } })
       onSaved()
     } catch (x) { const p = parseError(x); setErr(p.kind === 'message' ? t(p.message) : t('Not allowed')) }
   }

@@ -1,3 +1,4 @@
+import { dateLocale } from '../lib/i18n'
 import { Banknote, Plus, Printer, ShoppingBag } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -211,7 +212,7 @@ function TicketPrint({ w, customer, onDone }: { w: WorkOrder; customer: Customer
         <div className="r-big">{w.number}</div>{w.tags && <div className="r-big">TAG # {w.tags}</div>}</div>
       <hr />
       {customer && <div className="r-row"><span>{customer.name}</span><span>{customer.phone}</span></div>}
-      {w.due_at && <div className="r-row"><span>Ready / جاهز</span><span>{new Date(w.due_at).toLocaleString('en-GB')}</span></div>}
+      {w.due_at && <div className="r-row"><span>Ready / جاهز</span><span>{new Date(w.due_at).toLocaleString(dateLocale())}</span></div>}
       {w.reference && <div className="r-pre">{w.reference}</div>}
       <hr />
       {w.lines.map((l, i) => <div key={i} className="r-line"><span>{l.name}</span><span>{Number(l.qty)} ×</span><span>{num(Math.round(Number(l.qty) * l.unit_price), tn.currency_decimals)}</span></div>)}

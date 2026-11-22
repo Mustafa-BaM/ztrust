@@ -28,8 +28,8 @@ export default function Book() {
   const [done, setDone] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const nm = (x: { name: string; name_ar?: string | null }) => (lang === 'ar' && x.name_ar ? x.name_ar : x.name)
-  useEffect(() => { rpc<Info | null>('booking_info', { p_slug: slug }).then((i) => { setInfo(i); setBranch(i?.branches[0]?.id ?? ''); setDay(todayIn(i?.branches[0]?.timezone ?? 'Asia/Kuwait')) }).catch(() => setInfo(null)) }, [slug])
-  const tz = info?.branches.find((b) => b.id === branch)?.timezone ?? 'Asia/Kuwait'
+  useEffect(() => { rpc<Info | null>('booking_info', { p_slug: slug }).then((i) => { setInfo(i); setBranch(i?.branches[0]?.id ?? ''); setDay(todayIn(i?.branches[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)) }).catch(() => setInfo(null)) }, [slug])
+  const tz = info?.branches.find((b) => b.id === branch)?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const showTime = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(iso).toLocaleString(lang === 'ar' ? 'ar-u-nu-latn' : 'en-GB', { timeZone: tz, ...opts })
   useEffect(() => {
     setSlot(null); setSlots(null)

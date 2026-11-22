@@ -326,37 +326,25 @@ function Alerts() {
   const [rows, setRows] = useState<{ key: string; n: number; label: string; to: string; tone: 'bad' | 'warn' | 'info'; amount?: number }[] | null>(null)
   useEffect(() => {
     if (!s.branch) return
-    const b = s.branch.id
-    const today = new Date().toISOString().slice(0, 10)
-    const q = <T,>(on: boolean, f: () => PromiseLike<{ data: T[] | null; count?: number | null }>) => (on ? f() : Promise.resolve({ data: [] as T[], count: 0 }))
-    void Promise.all([
-      q(true, () => supabase.from('v_inventory').select('item_id, on_hand, reorder_point').eq('branch_id', b)),
-      q(s.has('batches'), () => supabase.from('v_batches').select('id, days_left, on_hand').eq('branch_id', b).gt('on_hand', 0).lte('days_left', 7)),
-      q(s.can('reports.all') || s.can('payments.receive'), () => supabase.from('sales').select('id, total, paid_total, refunded_total').eq('branch_id', b).eq('doc_type', 'invoice').eq('status', 'completed').limit(1000)),
-      q(s.has('qr_ordering'), () => supabase.from('online_orders').select('id', { count: 'exact', head: false }).eq('branch_id', b).eq('status', 'pending')),
-      q(s.has('tables'), () => supabase.from('open_orders').select('id').eq('branch_id', b).eq('status', 'open')),
-      q(s.has('job_cards') || s.has('preorders'), () => supabase.from('work_orders').select('id, status, due_at').eq('branch_id', b).in('status', ['received', 'in_progress', 'ready'])),
-      q(s.has('appointments'), () => supabase.from('appointments').select('id, status').eq('branch_id', b).gte('starts_at', `${today}T00:00:00`).lt('starts_at', `${today}T23:59:59`).in('status', ['booked', 'confirmed', 'arrived'])),
-      q(s.has('own_delivery'), () => supabase.from('deliveries').select('id, status').eq('branch_id', b).in('status', ['pending', 'assigned', 'picked_up'])),
-    ]).then(([inv, bat, sal, onl, tab, wo, ap, dl]) => {
-      const invRows = (inv.data ?? []) as { on_hand: number; reorder_point: number | null }[]
-      const unpaid = ((sal.data ?? []) as { total: number; paid_total: number; refunded_total: number }[]).filter((x) => x.total - x.refunded_total - x.paid_total > 0)
-      const woRows = (wo.data ?? []) as { status: string; due_at: string | null }[]
+    // one server call returns only the counts (gated by modules and permissions)
+    void rpc<Record<string, number>>('dashboard_alerts', { p_tenant: tn.id, p_branch: s.branch.id }).then((a) => {
       const out = [
-        { key: 'out', n: invRows.filter((x) => Number(x.on_hand) <= 0).length, label: t('Out of stock'), to: '/inventory', tone: 'bad' as const },
-        { key: 'low', n: invRows.filter((x) => Number(x.on_hand) > 0 && x.reorder_point != null && Number(x.on_hand) <= Number(x.reorder_point)).length, label: t('Below reorder point'), to: '/inventory', tone: 'warn' as const },
-        { key: 'exp', n: (bat.data ?? []).length, label: t('Batches expiring within 7 days'), to: '/inventory', tone: 'warn' as const },
-        { key: 'unpaid', n: unpaid.length, amount: unpaid.reduce((a, x) => a + x.total - x.refunded_total - x.paid_total, 0), label: t('Unpaid invoices (on account / payment links)'), to: '/sales', tone: 'warn' as const },
-        { key: 'online', n: (onl.data ?? []).length, label: t('Online orders waiting'), to: '/pos', tone: 'bad' as const },
-        { key: 'tables', n: (tab.data ?? []).length, label: t('Open tables'), to: '/pos', tone: 'info' as const },
-        { key: 'ready', n: woRows.filter((x) => x.status === 'ready').length, label: t('Ready, not collected'), to: '/orders', tone: 'info' as const },
-        { key: 'late', n: woRows.filter((x) => x.status !== 'ready' && x.due_at && new Date(x.due_at) < new Date()).length, label: t('Late job cards / pre-orders'), to: '/orders', tone: 'bad' as const },
-        { key: 'appts', n: (ap.data ?? []).length, label: t('Appointments still to come today'), to: '/calendar', tone: 'info' as const },
-        { key: 'deliv', n: (dl.data ?? []).length, label: t('Deliveries in progress'), to: '/deliveries', tone: 'info' as const },
+        { key: 'out', n: a.out ?? 0, label: t('Out of stock'), to: '/inventory', tone: 'bad' as const },
+        { key: 'low', n: a.low ?? 0, label: t('Below reorder point'), to: '/inventory', tone: 'warn' as const },
+        { key: 'exp', n: a.exp ?? 0, label: t('Batches expiring within 7 days'), to: '/inventory', tone: 'warn' as const },
+        { key: 'unpaid', n: a.unpaid ?? 0, amount: a.unpaid_amount ?? 0, label: t('Unpaid invoices (on account / payment links)'), to: '/sales', tone: 'warn' as const },
+        { key: 'online', n: a.online ?? 0, label: t('Online orders waiting'), to: '/pos', tone: 'bad' as const },
+        { key: 'tables', n: a.tables ?? 0, label: t('Open tables'), to: '/pos', tone: 'info' as const },
+        { key: 'ready', n: a.ready ?? 0, label: t('Ready, not collected'), to: '/orders', tone: 'info' as const },
+        { key: 'late', n: a.late ?? 0, label: t('Late job cards / pre-orders'), to: '/orders', tone: 'bad' as const },
+        { key: 'appts', n: a.appts ?? 0, label: t('Appointments still to come today'), to: '/calendar', tone: 'info' as const },
+        { key: 'deliv', n: a.deliv ?? 0, label: t('Deliveries in progress'), to: '/deliveries', tone: 'info' as const },
+        { key: 'docs', n: a.docs ?? 0, label: t('Employee documents expiring within 30 days'), to: '/hr', tone: 'warn' as const },
+        { key: 'requests', n: a.requests ?? 0, label: t('Purchase requests waiting'), to: '/purchasing', tone: 'info' as const },
       ]
       setRows(out.filter((x) => x.n > 0))
-    })
-  }, [s])
+    }).catch(() => setRows([]))
+  }, [s]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="panel alerts-panel">
       <header><h2>{t('Needs attention')}</h2>{rows && rows.length > 0 && <span className="badge-count">{rows.reduce((a, r) => a + r.n, 0)}</span>}</header>

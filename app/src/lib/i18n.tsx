@@ -6,6 +6,8 @@ type Ctx = { lang: Lang; dir: 'ltr' | 'rtl'; setLang: (l: Lang) => void; t: (s: 
 
 const LangCtx = createContext<Ctx | null>(null)
 const read = (): Lang => { try { return (localStorage.getItem('zt.lang') as Lang) || 'en' } catch { return 'en' } }
+/** Locale for dates and times: the UI language with Latin digits for Arabic, else the device's own locale (no fixed country format). */
+export const dateLocale = (): string | undefined => (read() === 'ar' ? 'ar-u-nu-latn' : undefined)
 
 /** English text is the key; Arabic comes from the dictionary and falls back to English when a string is missing. */
 export function LangProvider({ children }: { children: ReactNode }) {

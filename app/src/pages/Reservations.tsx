@@ -16,7 +16,7 @@ const STATUS: Record<string, string> = { booked: 'Booked', confirmed: 'Confirmed
 export default function Reservations() {
   const { t } = useT()
   const s = useSession()
-  const tz = s.branch?.timezone ?? 'Asia/Kuwait'
+  const tz = s.branch?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const [day, setDay] = useState(() => todayIn(tz))
   const [list, setList] = useState<Res[]>([])
   const [wait, setWait] = useState<Wait[]>([])

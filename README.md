@@ -103,6 +103,18 @@ Open business types: 15 (adds bakery, florist, spa, car wash, gym and central ma
 - **Report accuracy** (migration 0018): gift card and package sales are prepaid, not sales (`prepaid_sold` column); deposits and delivery cash appear in the tender report. `supabase/tests/reconcile.sql` cross-checks ledger, VAT, revenue, invoices = lines = payments, batches, gift cards, tender report and sales report.
 - `app/e2e/audit_crawl.mjs` opens every screen and tab in English and Arabic at 1440, 1024 and 800 px and reports errors, failed requests and overflow.
 
+## ERP additions (P1 / P2), simple HR & payroll, global readiness
+
+- **Shift**: cash in / cash out with a reason and approval (`cash_move`), expected cash includes them; printable X report (80 mm) and Z report.
+- **POS**: price change needs `sale.price`; customer price lists applied on the till; serial / IMEI picked or scanned per unit (warranty dates); exchange from the sale (returned value pays the new items, difference back in cash); cash ceiling per invoice (setting: off / warn / block, also enforced by the server); card networks and banknotes from settings (country defaults).
+- **Sales**: quotation → sales order → delivery note → invoice at the till (`/quotes`); customer statement and purchase history; debit notes; price lists.
+- **Purchasing**: purchase requests; supplier invoice with three-way match (order price × received qty, variance needs approval, duplicates refused); returns to suppliers (with serials); supplier statements.
+- **Finance**: cash flow (direct), bank statement import and matching, petty cash top-ups, account hierarchy, cost centres (branch default + per expense) with P&L per centre.
+- **HR & payroll** (`/hr`): employees with document expiry, leave, advances, monthly payroll (basic, allowances, POS commissions, overtime, unpaid leave, advances), posting and payment, payslips, bank transfer CSV. Leave and end-of-service rules are settings (defaults to be confirmed against the applicable labour law).
+- **Global**: business dates follow the branch / country time zone (`_today`), no fixed country time zone or date format in the UI, receipt languages are a setting, country rules live in Settings → Business → Payments & compliance.
+- **Security**: migration 0023 removes the implicit PUBLIC execute on functions (anonymous key limited to the public pages, hub, webhooks and API keys).
+- Tests: `supabase/tests/erp_p1p2_hr_flow.sql`, `app/e2e/p0_screens.mjs`.
+
 ## Run it
 
 ```bash

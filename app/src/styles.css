@@ -786,3 +786,29 @@ tr.clickable { cursor: pointer }
 .r-note { border-top: 1px dashed currentColor; margin-top: 4px; padding-top: 4px; white-space: pre-wrap }
 .a4-note { white-space: pre-wrap; border-inline-start: 3px solid #999; padding-inline-start: 8px }
 .quick-sub { font-size: .72rem; opacity: .75; font-weight: 500; margin-inline-start: 4px }
+
+/* ---------- P0 screens: documents, statements, payroll, treasury ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.kpi2.slim { padding: 8px 12px; min-width: 160px } .kpi2.slim .kpi2-value { font-size: 1.15rem }
+.dl dt.sub { padding-inline-start: 12px; color: var(--muted); font-size: .85rem }
+td.indent { padding-inline-start: 20px }
+td.warn { color: var(--amber-ink, var(--amber)); font-weight: 600 } td.bad, .num.bad { color: var(--bad); font-weight: 600 }
+.table-wrap.tall { max-height: 52vh; overflow: auto }
+tr.clickable { cursor: pointer } tr.clickable:hover td { background: var(--bg) }
+tr.sub-h-row td { background: var(--bg) }
+.zreport header, .card > header.row { margin-bottom: 8px }
+textarea { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px; font: inherit; background: var(--surface); color: var(--ink) }
+.pill.draft, .pill.pending, .pill.open { background: var(--accent-soft); color: var(--ink) }
+.pill.sent, .pill.approved, .pill.posted, .pill.accepted, .pill.delivered { background: var(--amber-soft); color: var(--amber-ink, var(--ink)) }
+.pill.invoiced, .pill.paid, .pill.ordered { background: var(--good-soft); color: var(--good) }
+.pill.rejected, .pill.cancelled { background: var(--bad-soft, var(--bg)); color: var(--bad) }
+/* A4 documents (quotation, delivery note, statement, payslip) */
+.a4-doc { color: #111; font: 12px/1.45 var(--body), "IBM Plex Sans Arabic", system-ui, sans-serif; display: grid; gap: 12px }
+.a4-doc h1 { font-size: 18px; margin: 0 } .a4-doc h2 { font-size: 15px; margin: 0 }
+.a4-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111; padding-bottom: 8px }
+.a4-head > div:last-child { text-align: end }
+.a4-doc table { width: 100%; border-collapse: collapse } .a4-doc th, .a4-doc td { border-bottom: 1px solid #ccc; padding: 4px 6px; text-align: start } .a4-doc .num { text-align: end }
+.a4-foot { text-align: end; font-size: 13px }
+.a4-sign { display: flex; justify-content: space-between; margin-top: 40px }
+.a4-to { display: grid; gap: 2px }
+@media print { .payslip { break-after: page } .payslip:last-child { break-after: auto } }

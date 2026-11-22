@@ -1,3 +1,4 @@
+import { Serials } from './inventory/Serials'
 import { AlertTriangle, ClipboardCheck, Download } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Empty, Modal, useApproval } from '../components/ui'
@@ -23,7 +24,7 @@ export default function Inventory() {
   const s = useSession()
   const tn = s.tenant!
   const d = tn.currency_decimals
-  const [tab, setTab] = useState<'stock' | 'card' | 'count' | 'expiry' | 'transfers' | 'production'>('stock')
+  const [tab, setTab] = useState<'stock' | 'card' | 'count' | 'expiry' | 'transfers' | 'production' | 'serials'>('stock')
   const [batches, setBatches] = useState<Batch[]>([])
   const [writeOff, setWriteOff] = useState<Batch | null>(null)
   const [rows, setRows] = useState<Row[]>([])
@@ -83,6 +84,7 @@ export default function Inventory() {
         {s.has('batches') && <button className={tab === 'expiry' ? 'on' : ''} onClick={() => setTab('expiry')}>{t('Expiry')}</button>}
         {s.has('transfers') && <button className={tab === 'transfers' ? 'on' : ''} onClick={() => setTab('transfers')}>{t('Transfers')}</button>}
         {s.has('production') && s.can('inventory.adjust') && <button className={tab === 'production' ? 'on' : ''} onClick={() => setTab('production')}>{t('Production')}</button>}
+        {s.has('serials') && <button className={tab === 'serials' ? 'on' : ''} onClick={() => setTab('serials')}>{t('Serial numbers')}</button>}
       </div>
 
       {tab === 'stock' && (
@@ -186,6 +188,7 @@ export default function Inventory() {
       })()}
       {tab === 'transfers' && <Transfers />}
       {tab === 'production' && <Production />}
+      {tab === 'serials' && <Serials />}
       {approval.dialog}
     </div>
   )

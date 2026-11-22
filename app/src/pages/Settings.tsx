@@ -13,6 +13,7 @@ import { prepareLogo } from '../lib/logo'
 import Modules from './settings/Modules'
 import Integrations from './settings/Integrations'
 import { ModuleSettings, StaffExtras, TablesSetup } from './settings/ModuleSettings'
+import { RulesSettings } from './settings/Rules'
 import { RECEIPT_FONTS } from '../components/Receipt'
 
 const MODULES: Record<string, string> = {
@@ -407,6 +408,7 @@ function Business() {
     receipt_cr: st.receipt_cr ?? '', receipt_website: st.receipt_website ?? '', receipt_header: st.receipt_header ?? '',
     receipt_terms: st.receipt_terms ?? '', receipt_footer: st.receipt_footer ?? '',
     logo_show: st.logo_show ?? true, logo_size: st.logo_size ?? 's', receipt_font: st.receipt_font ?? 'plex-mono', receipt_font_size: st.receipt_font_size ?? 'm',
+    receipt_langs: st.receipt_langs ?? 'both',
   })
   const [logo, setLogo] = useState({ url: tn.logo_url, mono: st.logo_mono_url ?? null as string | null })
   const [logoBusy, setLogoBusy] = useState(false)
@@ -480,12 +482,15 @@ function Business() {
             {RECEIPT_FONTS.map((f) => <option key={f.key} value={f.key} style={{ fontFamily: f.stack }}>{f.label}</option>)}</select></label>
           <label className="field"><span>{t('Text size')}</span><select id="r-font-size" value={r.receipt_font_size} onChange={(e) => setR({ ...r, receipt_font_size: e.target.value as 's' | 'm' | 'l' })}>
             <option value="s">{t('Small')}</option><option value="m">{t('Medium')}</option><option value="l">{t('Large')}</option></select></label>
+          <label className="field"><span>{t('Receipt languages')}</span><select id="r-langs" value={r.receipt_langs} onChange={(e) => setR({ ...r, receipt_langs: e.target.value as 'both' | 'en' | 'ar' })}>
+            <option value="both">{t('English and Arabic')}</option><option value="en">English</option><option value="ar">العربية</option></select></label>
           <label className="field span2"><span>{t('Closing message')}</span><input id="r-footer" value={r.receipt_footer} onChange={(e) => setR({ ...r, receipt_footer: e.target.value })} placeholder="شكراً لزيارتكم · Thank you" /></label>
           <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={save}>{t('Save')}</button></div>
         </div>
         <div className="card receipt-live"><h2>{t('Preview')}</h2><div className="receipt-preview"><Receipt data={preview} tenant={{ ...tn, name: f.name, name_ar: f.name_ar || null, tax_number: f.tax_number || null, logo_url: logo.url, settings: { ...st, ...r, logo_mono_url: logo.mono ?? undefined } }} branch={s.branch} /></div></div>
       </div>
       <ModuleSettings />
+      {(s.role === 'owner' || s.can('settings.manage')) && <RulesSettings />}
     </section>
   )
 }

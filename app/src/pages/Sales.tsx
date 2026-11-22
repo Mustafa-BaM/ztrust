@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PrintReceipt, tenderLabel, type ReceiptData } from '../components/Receipt'
 import { Empty, Modal, useApproval } from '../components/ui'
@@ -89,7 +89,8 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
   const tenant = s.tenant!
   const d = tenant.currency_decimals
   const approval = useApproval()
-  const [mode, setMode] = useState<null | 'refund' | 'cancel' | 'collect' | 'link'>(null)
+  const [mode, setMode] = useState<null | 'refund' | 'cancel' | 'collect' | 'link' | 'exchange'>(null)
+  const go = useNavigate()
   const [qty, setQty] = useState<Record<string, string>>({})
   const [tender, setTender] = useState<Tender>('cash')
   const [reason, setReason] = useState('')
@@ -104,6 +105,16 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
     const client_id = uuid()
     const r = await approval.run((pin) => rpc<Sale>('refund_sale', { p: { sale_id: sale.id, client_id, tender, reason, cancel, lines, shift_id: shift, approver_pin: pin ?? null } }))
     if (r) { setMode(null); await onChanged(sale.id) }
+  }
+  /** Exchange: choose what comes back, then sell the new items at the till; the returned value pays for them. */
+  function exchange() {
+    const picked = (sale.lines ?? []).map((l) => ({ l, q: parseFloat(qty[l.id] ?? '') })).filter((x) => x.q > 0)
+    if (!picked.length) { approval.setError(t('Choose at least one line to return')); return }
+    if (picked.some((x) => x.q > Number(x.l.qty))) { approval.setError(t('cannot refund more than sold')); return }
+    // same rounding as the server: net and VAT of the returned share
+    const credit = picked.reduce((a, x) => a + Math.round(Number(x.l.net_amount) * x.q / Number(x.l.qty)) + Math.round(Number(x.l.tax_amount) * x.q / Number(x.l.qty)), 0)
+    go('/pos', { state: { checkout: { lines: [], customer: sale.customer ?? null, label: `${t('Exchange')} · ${sale.number}`,
+      exchange: { sale_id: sale.id, number: sale.number, credit, reason, lines: picked.map((x) => ({ line_id: x.l.id, qty: x.q })) } } } })
   }
   async function collect() {
     const v = toMinor(amount, d)
@@ -133,11 +144,11 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
         </div>
         {sale.reason && <p className="muted">{t('Reason')}: {sale.reason}</p>}
         <div className="table-wrap"><table className="list">
-          <thead><tr><th>{t('Item')}</th><th className="num">{t('Qty')}</th><th className="num">{t('Price')}</th><th className="num">{t('VAT')}</th><th className="num">{t('Total')}</th>{mode === 'refund' && <th>{t('Refund qty')}</th>}</tr></thead>
+          <thead><tr><th>{t('Item')}</th><th className="num">{t('Qty')}</th><th className="num">{t('Price')}</th><th className="num">{t('VAT')}</th><th className="num">{t('Total')}</th>{(mode === 'refund' || mode === 'exchange') && <th>{mode === 'exchange' ? t('Return qty') : t('Refund qty')}</th>}</tr></thead>
           <tbody>{(sale.lines ?? []).map((l) => (
             <tr key={l.id}><td>{l.name}</td><td className="num">{Number(l.qty)}</td><td className="num">{num(l.unit_price, d)}</td>
               <td className="num">{num(l.tax_amount, d)}</td><td className="num">{num(l.line_total, d)}</td>
-              {mode === 'refund' && <td><input id={`rq-${l.id}`} className="qty-in" inputMode="decimal" value={qty[l.id] ?? ''} onChange={(e) => setQty({ ...qty, [l.id]: e.target.value })} /></td>}
+              {(mode === 'refund' || mode === 'exchange') && <td><input id={`rq-${l.id}`} className="qty-in" inputMode="decimal" value={qty[l.id] ?? ''} onChange={(e) => setQty({ ...qty, [l.id]: e.target.value })} /></td>}
             </tr>))}</tbody>
         </table></div>
         <dl className="dl">
@@ -153,7 +164,14 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
           <div key={k.token} className="linkbox"><code>{publicAppUrl}/pay/{k.token}</code>
             <button onClick={() => navigator.clipboard?.writeText(`${publicAppUrl}/pay/${k.token}`).catch(() => undefined)}>{t('Copy link')}</button></div>))}
 
-        {mode && mode !== 'link' && mode !== 'collect' && (
+        {mode === 'exchange' && (
+          <div className="card stack">
+            <label className="field"><span>{t('Reason (required)')}</span><input id="exchange-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+            <p className="muted small">{t('Enter what the customer returns, then add the new items at the till. The returned value pays for them; any difference is paid or given back in cash.')}</p>
+            <button className="primary" disabled={!reason.trim()} onClick={exchange}>{t('Continue to the till')}</button>
+          </div>
+        )}
+        {mode && mode !== 'link' && mode !== 'collect' && mode !== 'exchange' && (
           <div className="card stack">
             <label className="field"><span>{t('Refund to')}</span>
               <select id="refund-tender" value={tender} onChange={(e) => setTender(e.target.value as Tender)}>
@@ -181,6 +199,7 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
             {due > 0 && <button onClick={() => { setMode('collect'); setAmount(num(due, d)) }}>{t('Receive payment')}</button>}
             {due > 0 && sale.customer_id && <button onClick={() => { setMode('link'); setAmount(num(due, d)) }}>{t('Send payment link')}</button>}
             <button onClick={() => { setMode('refund'); setTender(due > 0 ? 'on_account' : 'cash') }}>{t('Refund items')}</button>
+            {due <= 0 && shift && <button onClick={() => setMode('exchange')}>{t('Exchange')}</button>}
             <button className="danger" onClick={() => { setMode('cancel'); setTender(due > 0 ? 'on_account' : 'cash') }}>{t('Cancel invoice')}</button>
           </>}
         </div>

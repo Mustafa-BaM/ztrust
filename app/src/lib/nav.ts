@@ -1,4 +1,4 @@
-import { BarChart3, Bike, BookOpenCheck, Boxes, CalendarClock, CalendarDays, ChefHat, ClipboardList, Clock3, Fingerprint, LayoutDashboard, Package, Receipt, Settings, ShoppingBag, Tag, Truck, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Bike, BookOpenCheck, Boxes, CalendarClock, CalendarDays, ChefHat, ClipboardList, Clock3, FileSignature, Fingerprint, IdCard, LayoutDashboard, Package, Receipt, Settings, ShoppingBag, Tag, Truck, Users, type LucideIcon } from 'lucide-react'
 import { useSession } from './session'
 
 export interface NavItem { to: string; label: string; icon: LucideIcon; group: 'sell' | 'stock' | 'insight' | 'admin'; keys?: string }
@@ -13,6 +13,7 @@ export function useNav(): NavItem[] {
     { to: '/pos', label: 'Sell', icon: ShoppingBag, group: 'sell', keys: 'pos till cashier بيع كاشير', show: s.can('sale.create') },
     { to: '/shift', label: 'Shift', icon: Clock3, group: 'sell', keys: 'drawer cash وردية', show: s.can('sale.create') },
     { to: '/sales', label: 'Sales', icon: Receipt, group: 'sell', keys: 'invoices refunds فواتير مبيعات', show: any('sale.create', 'reports.all') },
+    { to: '/quotes', label: 'Quotations & orders', icon: FileSignature, group: 'sell', keys: 'quotation sales order delivery note عرض سعر أمر بيع تسليم', show: s.has('quotations') && s.can('sale.create') },
     { to: '/customers', label: 'Customers', icon: Users, group: 'sell', keys: 'clients عملاء', show: any('sale.create', 'customers.manage') },
     { to: '/calendar', label: 'Calendar', icon: CalendarDays, group: 'sell', keys: 'appointments booking مواعيد', show: s.has('appointments') && s.can('sale.create') },
     { to: '/reservations', label: 'Reservations', icon: CalendarClock, group: 'sell', keys: 'tables waitlist حجوزات', show: s.has('reservations') && s.can('sale.create') },
@@ -26,6 +27,7 @@ export function useNav(): NavItem[] {
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'insight', keys: 'kpi لوحة', show: any('sale.create', 'reports.all', 'inventory.view', 'finance.view') },
     { to: '/reports', label: 'Reports', icon: BarChart3, group: 'insight', keys: 'تقارير', show: s.can('reports.all') },
     { to: '/accounting', label: 'Accounting', icon: BookOpenCheck, group: 'insight', keys: 'ledger journal محاسبة قيود', show: any('finance.view', 'finance.journal', 'expenses.create', 'payables.pay') },
+    { to: '/hr', label: 'HR & payroll', icon: IdCard, group: 'admin', keys: 'employees salaries leave رواتب موظفين إجازات', show: any('hr.manage', 'payroll.run') },
     { to: '/attendance', label: 'Attendance', icon: Fingerprint, group: 'admin', keys: 'clock حضور', show: s.has('attendance') },
     { to: '/settings', label: 'Settings', icon: Settings, group: 'admin', keys: 'إعدادات', show: s.role === 'owner' || any('staff.manage', 'settings.manage') },
   ]

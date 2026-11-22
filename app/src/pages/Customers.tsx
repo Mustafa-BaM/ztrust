@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
-import { Empty, Modal } from '../components/ui'
+import { Statement } from '../components/Statement'
+import { Empty, Modal, useApproval } from '../components/ui'
 import { useT } from '../lib/i18n'
 import { fmt, num, toMinor } from '../lib/money'
 import { useSession } from '../lib/session'
@@ -96,6 +97,8 @@ function CustomerCard({ c, onClose }: { c: Customer; onClose: () => void }) {
   const [points, setPoints] = useState<number | null>(null)
   const [cards, setCards] = useState<{ code: string; balance: number; status: string; expires_on: string | null }[]>([])
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [tab, setTab] = useState<'overview' | 'statement' | 'purchases'>('overview')
+  const canMoney = s.can('payments.receive') || s.can('customers.manage') || s.can('finance.view')
   const load = useCallback(async () => {
     const [p, g] = await Promise.all([
       supabase.from('customer_packages').select('*, package_uses(count)').eq('customer_id', c.id).order('created_at', { ascending: false }),
@@ -113,8 +116,13 @@ function CustomerCard({ c, onClose }: { c: Customer; onClose: () => void }) {
   }
   return (
     <Modal title={c.name} onClose={onClose} wide>
-      <div className="stack">
+      <div className="tabs" role="tablist">{(['overview', 'statement', 'purchases'] as const).filter((x) => x === 'overview' || canMoney).map((x) => (
+        <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? 'on' : ''} onClick={() => setTab(x)}>{t(x === 'overview' ? 'Overview' : x === 'statement' ? 'Statement' : 'Purchases')}</button>))}</div>
+      {tab === 'statement' && <Statement kind="ar" partyId={c.id} partyName={c.name} />}
+      {tab === 'purchases' && <Purchases customerId={c.id} />}
+      {tab === 'overview' && <div className="stack">
         <p className="muted">{c.phone}{c.address ? ` · ${c.address}` : ''}</p>
+        <CustomerTerms c={c} />
         {points != null && <div className="kpi2"><span className="kpi2-label">{t('Loyalty points')}</span><b className="kpi2-value">{points}</b></div>}
         {pkgs.length > 0 && <>
           <h3 className="sub-h">{t('Packages and memberships')}</h3>
@@ -129,7 +137,7 @@ function CustomerCard({ c, onClose }: { c: Customer; onClose: () => void }) {
           <ul className="mod-list">{cards.map((g) => <li key={g.code}><span className="mono">{g.code}</span><b>{fmt(g.balance, tn, lang)}</b></li>)}</ul></>}
         {msg && <p className={msg.ok ? 'success' : 'error'} role="status">{msg.text}</p>}
         {pkgs.length === 0 && cards.length === 0 && points == null && <p className="muted">{t('No packages, points or gift cards yet.')}</p>}
-      </div>
+      </div>}
     </Modal>
   )
 }
@@ -157,5 +165,68 @@ function GiftCards() {
         <tbody>{rows.map((r) => <tr key={r.id}><td className="mono">{r.code}</td><td className="num">{fmt(r.initial, tn, lang)}</td><td className="num"><b>{fmt(r.balance, tn, lang)}</b></td><td>{r.expires_on ?? '—'}</td><td>{new Date(r.created_at).toLocaleDateString()}</td></tr>)}</tbody>
       </table></div>
     </section>
+  )
+}
+
+/** Every invoice and credit note of this customer, newest first. */
+function Purchases({ customerId }: { customerId: string }) {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const [rows, setRows] = useState<{ id: string; number: string; doc_type: string; total: number; paid_total: number; refunded_total: number; status: string; created_at: string }[] | null>(null)
+  useEffect(() => {
+    void supabase.from('sales').select('id, number, doc_type, total, paid_total, refunded_total, status, created_at').eq('customer_id', customerId)
+      .order('created_at', { ascending: false }).limit(200).then(({ data }) => setRows(data ?? []))
+  }, [customerId])
+  if (!rows) return <p className="muted">{t('Loading…')}</p>
+  if (!rows.length) return <Empty title={t('No purchases yet')} />
+  const spent = rows.reduce((a, r) => a + (r.doc_type === 'invoice' ? r.total : -r.total), 0)
+  return (
+    <div className="stack">
+      <p className="muted">{t('{n} documents', { n: rows.length })} · {t('Net purchases')}: <b>{fmt(spent, tn, lang)}</b></p>
+      <div className="table-wrap"><table className="list compact">
+        <thead><tr><th>{t('Date')}</th><th>{t('Number')}</th><th>{t('Status')}</th><th className="num">{t('Total')}</th><th className="num">{t('Balance due')}</th></tr></thead>
+        <tbody>{rows.map((r) => <tr key={r.id}><td>{r.created_at.slice(0, 10)}</td><td><a href={`/sales?q=${encodeURIComponent(r.number)}`}>{r.number}</a></td><td>{t(r.status)}</td>
+          <td className="num">{r.doc_type === 'invoice' ? '' : '−'}{fmt(r.total, tn, lang)}</td>
+          <td className="num">{r.doc_type === 'invoice' && r.total - r.paid_total - r.refunded_total > 0 ? fmt(r.total - r.paid_total - r.refunded_total, tn, lang) : ''}</td></tr>)}</tbody>
+      </table></div>
+    </div>
+  )
+}
+
+/** Price list and extra charges (debit note) for one customer. */
+function CustomerTerms({ c }: { c: Customer }) {
+  const { t, lang } = useT()
+  const s = useSession()
+  const tn = s.tenant!
+  const approval = useApproval()
+  const [lists, setLists] = useState<{ id: string; name: string; name_ar: string | null }[]>([])
+  const [listId, setListId] = useState(c.price_list_id ?? '')
+  const [dn, setDn] = useState<null | { amount: string; reason: string }>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => { void supabase.from('price_lists').select('id, name, name_ar').eq('tenant_id', tn.id).eq('is_active', true).order('name').then(({ data }) => setLists(data ?? [])) }, [tn.id])
+  async function setList(v: string) {
+    setListId(v)
+    const r = await approval.run(() => rpc('set_customer_price_list', { p_customer: c.id, p_list: v || null }).then(() => true))
+    setMsg(r ? t('Saved') : null)
+  }
+  async function debit() {
+    if (!dn) return
+    const r = await approval.run(() => rpc<{ number: string }>('customer_debit_note', { p: { tenant_id: tn.id, branch_id: s.branch!.id, customer_id: c.id, amount: toMinor(dn.amount, tn.currency_decimals), reason: dn.reason } }))
+    if (r) { setDn(null); setMsg(t('Debit note {n} issued', { n: r.number })) }
+  }
+  return (
+    <div className="row wrap">
+      {s.can('customers.manage') && lists.length > 0 && <label className="field"><span>{t('Price list')}</span>
+        <select id="cust-pricelist" value={listId} onChange={(e) => void setList(e.target.value)}><option value="">{t('Standard prices')}</option>
+          {lists.map((l) => <option key={l.id} value={l.id}>{lang === 'ar' && l.name_ar ? l.name_ar : l.name}</option>)}</select></label>}
+      {s.can('finance.journal') && !dn && <button className="ghost" onClick={() => setDn({ amount: '', reason: '' })}>{t('Debit note')}</button>}
+      {dn && <form className="row wrap" onSubmit={(e) => { e.preventDefault(); void debit() }}>
+        <label className="field"><span>{t('Amount')}</span><input id="dn-amount" inputMode="decimal" value={dn.amount} onChange={(e) => setDn({ ...dn, amount: e.target.value })} /></label>
+        <label className="field"><span>{t('Reason')}</span><input id="dn-reason" value={dn.reason} onChange={(e) => setDn({ ...dn, reason: e.target.value })} placeholder={t('e.g. Delivery charge, price correction')} /></label>
+        <button className="primary" disabled={!dn.amount || !dn.reason.trim()}>{t('Issue debit note')}</button><button type="button" className="ghost" onClick={() => setDn(null)}>{t('Cancel')}</button></form>}
+      {(msg || approval.error) && <p className={approval.error ? 'error' : 'success'}>{approval.error ?? msg}</p>}
+      {approval.dialog}
+    </div>
   )
 }

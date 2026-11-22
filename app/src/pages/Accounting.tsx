@@ -1,3 +1,4 @@
+import { BankRec, CashFlow, CostCenters, Petty } from './accounting/Treasury'
 import JSZip from 'jszip'
 import { CheckCircle2, Download, FilePlus2, Lock, LockOpen, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
@@ -12,7 +13,7 @@ import { useSession } from '../lib/session'
 import { friendly, rpc, supabase } from '../lib/supabase'
 import type { Supplier } from '../lib/types'
 
-interface Account { id: string; code: string; name_en: string; name_ar: string; type: string; section: string; system_key: string | null; is_system: boolean; is_active: boolean }
+interface Account { id: string; code: string; name_en: string; name_ar: string; type: string; section: string; system_key: string | null; is_system: boolean; is_active: boolean; parent_id?: string | null }
 interface Verify { entries: number; first_entry: number | null; last_entry: number | null; hash_mismatches: number; chain_breaks: number; numbering_gaps: number; unbalanced_entries: number; total_debit: number; total_credit: number; problem_entries: number[]; last_hash: string | null; checked_at: string }
 interface Line { id: number; account_id: string; debit: number; credit: number; customer_id: string | null; supplier_id: string | null; branch_id: string | null }
 interface Entry { id: number; entry_no: number; entry_date: string; source_type: string; source_id: string | null; memo: string | null; reference: string | null; hash: string; prev_hash: string | null; created_at: string; created_by: string | null; approved_by: string | null; reversal_of: number | null; journal_lines: Line[] }
@@ -53,6 +54,10 @@ export default function Accounting() {
     { id: 'arap', label: 'Receivables & payables', show: s.can('finance.view') || s.can('payables.pay') },
     { id: 'expenses', label: 'Expenses', show: s.can('expenses.create') || s.can('finance.view') },
     { id: 'accounts', label: 'Chart of accounts', show: s.can('finance.view') || s.can('finance.manage') },
+    { id: 'cashflow', label: 'Cash flow', show: s.can('finance.view') },
+    { id: 'bank', label: 'Bank reconciliation', show: s.can('finance.view') },
+    { id: 'petty', label: 'Petty cash', show: s.can('finance.view') || s.can('payables.pay') },
+    { id: 'costcenters', label: 'Cost centres', show: s.can('finance.view') },
     { id: 'periods', label: 'Periods', show: s.can('finance.view') },
   ].filter((x) => x.show)
   const [tab, setTab] = useState(tabs[0]?.id ?? 'expenses')
@@ -67,6 +72,10 @@ export default function Accounting() {
       {tab === 'expenses' && <Expenses />}
       {tab === 'accounts' && <Accounts />}
       {tab === 'periods' && <Periods />}
+      {tab === 'cashflow' && <CashFlow />}
+      {tab === 'bank' && <BankRec />}
+      {tab === 'petty' && <Petty />}
+      {tab === 'costcenters' && <CostCenters />}
     </div>
   )
 }
@@ -598,7 +607,9 @@ function ExpenseForm({ accounts, suppliers, onClose, onSaved }: { accounts: Acco
   const s = useSession()
   const tn = s.tenant!
   const d = tn.currency_decimals
-  const [f, setF] = useState({ account_id: accounts.find((a) => a.code === '6100')?.id ?? '', description: '', total: '', withVat: tn.vat_rate > 0, paid_from: 'bank', supplier_id: '', reference: '', date: today() })
+  const [f, setF] = useState({ account_id: accounts.find((a) => a.code === '6100')?.id ?? '', description: '', total: '', withVat: tn.vat_rate > 0, paid_from: 'bank', supplier_id: '', reference: '', date: today(), cost_center_id: '' })
+  const [centers, setCenters] = useState<{ id: string; code: string; name: string }[]>([])
+  useEffect(() => { void supabase.from('cost_centers').select('id, code, name').eq('tenant_id', tn.id).eq('is_active', true).order('code').then(({ data }) => setCenters(data ?? [])) }, [tn.id])
   const [err, setErr] = useState<string | null>(null)
   const gross = toMinor(f.total || '0', d) || 0
   const vat = f.withVat ? Math.round((gross * tn.vat_rate) / (100 + tn.vat_rate)) : 0
@@ -606,7 +617,7 @@ function ExpenseForm({ accounts, suppliers, onClose, onSaved }: { accounts: Acco
     e.preventDefault(); setErr(null)
     try {
       await rpc('record_expense', { p: { tenant_id: tn.id, branch_id: s.branch!.id, entry_date: f.date, account_id: f.account_id, description: f.description, amount: gross - vat, vat,
-        paid_from: f.paid_from, supplier_id: f.supplier_id || null, reference: f.reference } })
+        paid_from: f.paid_from, supplier_id: f.supplier_id || null, reference: f.reference, cost_center_id: f.cost_center_id || null } })
       onSaved()
     } catch (x) { setErr((x as Error).message) }
   }
@@ -623,6 +634,7 @@ function ExpenseForm({ accounts, suppliers, onClose, onSaved }: { accounts: Acco
         {tn.vat_rate > 0 && <label className="check"><input id="ex-vat" type="checkbox" checked={f.withVat} onChange={(e) => setF({ ...f, withVat: e.target.checked })} />{t('Includes VAT {r}% (tax invoice received)', { r: tn.vat_rate })}</label>}
         <p className="muted small">{t('Net')} {num(gross - vat, d)} · {t('VAT')} {num(vat, d)}</p>
         <div className="seg">{(['bank', 'cash', 'petty_cash', 'ap'] as const).map((k) => <button type="button" key={k} className={f.paid_from === k ? 'on' : ''} onClick={() => setF({ ...f, paid_from: k })}>{t({ cash: 'Cash', petty_cash: 'Petty cash', bank: 'Bank', ap: 'Unpaid bill' }[k])}</button>)}</div>
+        {centers.length > 0 && <label className="field"><span>{t('Cost centre')}</span><select id="ex-cc" value={f.cost_center_id} onChange={(e) => setF({ ...f, cost_center_id: e.target.value })}><option value="">{t('The branch\'s cost centre')}</option>{centers.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></label>}
         {(f.paid_from === 'ap' || suppliers.length > 0) && <label className="field"><span>{t('Supplier')}{f.paid_from === 'ap' ? '' : ` (${t('optional')})`}</span>
           <select id="ex-sup" value={f.supplier_id} required={f.paid_from === 'ap'} onChange={(e) => setF({ ...f, supplier_id: e.target.value })}><option value="">—</option>{suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
         <label className="field"><span>{t('Invoice / receipt number')}</span><input id="ex-ref" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} /></label>
@@ -639,26 +651,30 @@ function Accounts() {
   const s = useSession()
   const tn = s.tenant!
   const { accounts, reload } = useAccounts(tn.id)
-  const [f, setF] = useState({ code: '', name_en: '', name_ar: '', section: 'operating_expense' })
+  const [f, setF] = useState({ code: '', name_en: '', name_ar: '', section: 'operating_expense', parent_id: '' })
   const [err, setErr] = useState<string | null>(null)
   const typeOf: Record<string, string> = { current_asset: 'asset', non_current_asset: 'asset', contra_asset: 'asset', current_liability: 'liability', non_current_liability: 'liability',
     equity: 'equity', revenue: 'income', other_income: 'income', cogs: 'expense', operating_expense: 'expense', other_expense: 'expense' }
   async function add(e: React.FormEvent) {
     e.preventDefault(); setErr(null)
-    const r = await supabase.from('accounts').insert({ tenant_id: tn.id, code: f.code.trim(), name_en: f.name_en.trim(), name_ar: f.name_ar.trim() || f.name_en.trim(), section: f.section, type: typeOf[f.section] })
-    if (r.error) setErr(r.error.message); else { setF({ ...f, code: '', name_en: '', name_ar: '' }); await reload() }
+    const r = await supabase.from('accounts').insert({ tenant_id: tn.id, code: f.code.trim(), name_en: f.name_en.trim(), name_ar: f.name_ar.trim() || f.name_en.trim(), section: f.section, type: typeOf[f.section], parent_id: f.parent_id || null })
+    if (r.error) setErr(r.error.message); else { setF({ ...f, code: '', name_en: '', name_ar: '', parent_id: '' }); await reload() }
   }
   const sections = Object.keys(SECTION)
   return (
     <div className="stack">
       {sections.map((sec) => {
-        const list = accounts.filter((a) => a.section === sec)
+        // parents first, each followed by its sub-accounts (indented)
+        const inSec = accounts.filter((a) => a.section === sec)
+        const depth = (a: Account, n = 0): number => { const p = a.parent_id ? accounts.find((x) => x.id === a.parent_id) : null; return p && n < 6 ? depth(p, n + 1) : n }
+        const path = (a: Account): string => { const p = a.parent_id ? accounts.find((x) => x.id === a.parent_id) : null; return (p ? path(p) + '/' : '') + a.code }
+        const list = [...inSec].sort((a, b) => path(a).localeCompare(path(b)))
         if (!list.length) return null
         return (
           <section key={sec} className="panel">
             <header><h2>{t(SECTION[sec])}</h2><span className="muted small">{list.length}</span></header>
             <table className="list compact"><tbody>{list.map((a) => (
-              <tr key={a.id} className={a.is_active ? '' : 'dim'}><td className="mono">{a.code}</td><td>{lang === 'ar' ? a.name_ar : a.name_en}<span className="muted small"> · {lang === 'ar' ? a.name_en : a.name_ar}</span></td>
+              <tr key={a.id} className={a.is_active ? '' : 'dim'}><td className="mono">{a.code}</td><td style={{ paddingInlineStart: `${depth(a) * 18 + 8}px` }}>{depth(a) > 0 ? '└ ' : ''}{lang === 'ar' ? a.name_ar : a.name_en}<span className="muted small"> · {lang === 'ar' ? a.name_en : a.name_ar}</span></td>
                 <td>{a.is_system ? <span className="pill">{t('System')}</span> : <span className="pill warn">{t('custom')}</span>}</td>
                 <td className="num">{s.can('finance.manage') && <label className="check"><input id={`acc-act-${a.id}`} type="checkbox" checked={a.is_active} onChange={async (e) => { await supabase.from('accounts').update({ is_active: e.target.checked }).eq('id', a.id); await reload() }} />{t('Active')}</label>}</td></tr>))}</tbody></table>
           </section>)
@@ -669,6 +685,8 @@ function Accounts() {
           <label className="field"><span>{t('Code')}</span><input id="na-code" required pattern="[0-9]{3,6}" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder="6950" /></label>
           <label className="field"><span>{t('Statement section')}</span><select id="na-sec" value={f.section} onChange={(e) => setF({ ...f, section: e.target.value })}>{sections.map((x) => <option key={x} value={x}>{t(SECTION[x])}</option>)}</select></label>
           <label className="field"><span>{t('Name (English)')}</span><input id="na-en" required value={f.name_en} onChange={(e) => setF({ ...f, name_en: e.target.value })} /></label>
+          <label className="field"><span>{t('Under (parent account)')}</span><select id="na-parent" value={f.parent_id} onChange={(e) => setF({ ...f, parent_id: e.target.value })}><option value="">—</option>
+            {accounts.filter((a) => a.type === typeOf[f.section]).map((a) => <option key={a.id} value={a.id}>{a.code} · {lang === 'ar' ? a.name_ar : a.name_en}</option>)}</select></label>
           <label className="field"><span>{t('Name (Arabic)')}</span><input id="na-ar" dir="rtl" value={f.name_ar} onChange={(e) => setF({ ...f, name_ar: e.target.value })} /></label>
           {err && <p className="error span2">{err}</p>}
           <div className="row end span2"><button className="primary">{t('Add account')}</button></div>

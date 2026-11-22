@@ -24,6 +24,8 @@ import Pos from './pages/Pos'
 import Products from './pages/Products'
 import Reports from './pages/Reports'
 import Sales from './pages/Sales'
+import SalesDocs from './pages/SalesDocs'
+import Hr from './pages/Hr'
 import Settings from './pages/Settings'
 import Shift from './pages/Shift'
 
@@ -39,6 +41,8 @@ function Guarded() {
         <Route path="/pos" element={<Pos />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/sales" element={<Sales />} />
+        <Route path="/quotes" element={<SalesDocs />} />
+        <Route path="/hr" element={<Hr />} />
         <Route path="/shift" element={<Shift />} />
         <Route path="/kds" element={<Kds />} />
         <Route path="/calendar" element={<Calendar />} />

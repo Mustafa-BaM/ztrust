@@ -1,3 +1,4 @@
+import { dateLocale } from '../lib/i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Empty, useApproval } from '../components/ui'
@@ -207,7 +208,7 @@ function PrintChit({ ticket, station, onDone }: { ticket: KitchenTicket; station
       <div className="receipt chit">
         <div className="r-center"><span className="r-big">{station}</span><span className="chit-ref">{ticket.order_ref.startsWith('OFF-') ? ticket.order_ref.slice(0, 8) : `#${parseInt(ticket.order_ref.split('-').pop() ?? '0', 10)}`}</span>
           <span className="r-big">{TYPE_LABEL[ticket.order_type]}{ticket.table_no ? ` · T${ticket.table_no}` : ''}</span>
-          <span>{new Date(ticket.created_at).toLocaleTimeString('en-GB')}</span></div>
+          <span>{new Date(ticket.created_at).toLocaleTimeString(dateLocale())}</span></div>
         <hr />
         {ticket.kitchen_ticket_items.map((i) => (
           <div key={i.id} className="chit-line"><b>{Number(i.qty)} × {i.name}</b>{i.name_ar && <div>{i.name_ar}</div>}{i.note && <div className="chit-note">» {i.note}</div>}</div>))}

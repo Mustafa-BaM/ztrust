@@ -1,3 +1,4 @@
+import { dateLocale } from '../lib/i18n'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -39,10 +40,14 @@ function zatcaTlv(seller: string, vatNo: string, iso: string, total: string, vat
 const TENDER_AR: Record<string, string> = { gift_card: 'بطاقة هدية', cod: 'الدفع عند الاستلام', loyalty: 'نقاط الولاء', package: 'من الباقة', deposit: 'العربون', platform: 'منصة توصيل', cash: 'نقدي', card: 'بطاقة', on_account: 'آجل', payment_link: 'رابط دفع', bank_transfer: 'تحويل', store_credit: 'رصيد', other: 'أخرى' }
 const TENDER_EN: Record<string, string> = { gift_card: 'Gift card', cod: 'Cash on delivery', loyalty: 'Loyalty points', package: 'From package', deposit: 'Deposit', platform: 'Delivery platform', cash: 'Cash', card: 'Card', on_account: 'On account', payment_link: 'Payment link', bank_transfer: 'Bank transfer', store_credit: 'Store credit', other: 'Other' }
 
+/** Receipt labels in the languages the business prints: both (default), English only or Arabic only. */
+const labeler = (langs?: 'both' | 'en' | 'ar') => (en: string, ar: string) => (langs === 'en' ? en : langs === 'ar' ? ar : `${en} / ${ar}`)
+
 /** Bilingual thermal receipt (58/80 mm). Printing goes through the OS print dialog, so any installed printer works. */
 export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: Tenant; branch: Branch | null }) {
   const d = tenant.currency_decimals
   const st = tenant.settings ?? {}
+  const L = labeler(st.receipt_langs)
   const [qr, setQr] = useState<string | null>(null)
   useEffect(() => {
     if (tenant.country_code !== 'SA' || !tenant.tax_number || data.offline) { setQr(null); return }
@@ -62,33 +67,33 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
         {branch && <div>{branch.name_ar || branch.name}</div>}
         {st.receipt_address && <div className="r-pre">{st.receipt_address}</div>}
         {st.receipt_phones && <div>☎ {st.receipt_phones}</div>}
-        {st.receipt_cr && <div>CR / س.ت: {st.receipt_cr}</div>}
-        {tenant.tax_number && <div>VAT / الرقم الضريبي: {tenant.tax_number}</div>}
+        {st.receipt_cr && <div>{L('CR', 'س.ت')}: {st.receipt_cr}</div>}
+        {tenant.tax_number && <div>{L('VAT', 'الرقم الضريبي')}: {tenant.tax_number}</div>}
         {st.receipt_header && <div className="r-pre">{st.receipt_header}</div>}
         <div className="r-big">{isCn ? 'CREDIT NOTE · إشعار دائن' : tenant.tax_number ? 'TAX INVOICE · فاتورة ضريبية مبسطة' : 'RECEIPT · إيصال'}</div>
         {data.copy && <div className="r-big">*** COPY · نسخة ***</div>}
         {data.offline && <div>OFFLINE · بانتظار المزامنة</div>}
       </div>
-      <div className="r-row"><span>{data.number}</span><span>{new Date(data.created_at).toLocaleString('en-GB')}</span></div>
-      {data.original_number && <div className="r-row"><span>Ref / مرجع</span><span>{data.original_number}</span></div>}
-      {data.reason && <div className="r-row"><span>Reason / السبب</span><span>{data.reason}</span></div>}
+      <div className="r-row"><span>{data.number}</span><span>{new Date(data.created_at).toLocaleString(dateLocale())}</span></div>
+      {data.original_number && <div className="r-row"><span>{L('Ref', 'مرجع')}</span><span>{data.original_number}</span></div>}
+      {data.reason && <div className="r-row"><span>{L('Reason', 'السبب')}</span><span>{data.reason}</span></div>}
       {data.customer && <div className="r-row"><span>{data.customer.name}</span><span>{data.customer.phone}</span></div>}
-      {data.cashier && <div className="r-row"><span>Cashier / الكاشير</span><span>{data.cashier}</span></div>}
+      {data.cashier && <div className="r-row"><span>{L('Cashier', 'الكاشير')}</span><span>{data.cashier}</span></div>}
       {data.note && <div className="r-note">{data.note}</div>}
       <hr />
       {data.lines.map((l, i) => (
         <div key={i} className="r-line"><span>{l.name}{l.promo && <small className="r-promo"> · {l.promo}</small>}</span><span>{Number(l.qty)} ×</span><span>{num(l.line_total, d)}</span></div>
       ))}
       <hr />
-      {data.discount_total > 0 && <div className="r-row"><span>Discount / الخصم</span><span>{num(data.discount_total, d)}</span></div>}
-      <div className="r-row"><span>Subtotal excl. VAT / المجموع قبل الضريبة</span><span>{num(data.subtotal, d)}</span></div>
-      <div className="r-row"><span>VAT / الضريبة</span><span>{num(data.tax_total, d)}</span></div>
-      <div className="r-row r-big"><span>TOTAL / الإجمالي {tenant.currency}</span><span>{num(data.total, d)}</span></div>
+      {data.discount_total > 0 && <div className="r-row"><span>{L('Discount', 'الخصم')}</span><span>{num(data.discount_total, d)}</span></div>}
+      <div className="r-row"><span>{L('Subtotal excl. VAT', 'المجموع قبل الضريبة')}</span><span>{num(data.subtotal, d)}</span></div>
+      <div className="r-row"><span>{L('VAT', 'الضريبة')}</span><span>{num(data.tax_total, d)}</span></div>
+      <div className="r-row r-big"><span>{L('TOTAL', 'الإجمالي')} {tenant.currency}</span><span>{num(data.total, d)}</span></div>
       <hr />
       {data.payments.map((p, i) => (
-        <div key={i} className="r-row"><span>{p.method ? p.method : `${TENDER_EN[p.tender]} / ${TENDER_AR[p.tender]}`}{p.status === 'pending' ? ' (pending)' : ''}</span><span>{num(Math.abs(p.amount), d)}</span></div>
+        <div key={i} className="r-row"><span>{p.method ? p.method : L(TENDER_EN[p.tender] ?? p.tender, TENDER_AR[p.tender] ?? p.tender)}{p.status === 'pending' ? ' (pending)' : ''}</span><span>{num(Math.abs(p.amount), d)}</span></div>
       ))}
-      {!!data.change && data.change > 0 && <div className="r-row r-big"><span>Change / الباقي</span><span>{num(data.change, d)}</span></div>}
+      {!!data.change && data.change > 0 && <div className="r-row r-big"><span>{L('Change', 'الباقي')}</span><span>{num(data.change, d)}</span></div>}
       {qr && <div className="r-center"><img src={qr} alt="ZATCA QR" width={140} height={140} /></div>}
       {st.receipt_terms && <><hr /><div className="r-pre r-terms">{st.receipt_terms}</div></>}
       <div className="r-center small r-pre">{st.receipt_footer || 'شكراً لزيارتكم · Thank you'}</div>
@@ -132,6 +137,7 @@ export const fontStack = (key?: string) => (RECEIPT_FONTS.find((f) => f.key === 
 function A4Invoice({ data, tenant, branch, qr }: { data: ReceiptData; tenant: Tenant; branch: Branch | null; qr: string | null }) {
   const d = tenant.currency_decimals
   const st = tenant.settings ?? {}
+  const L = labeler(st.receipt_langs)
   const isCn = data.doc_type === 'credit_note'
   return (
     <div className="a4" style={{ fontFamily: fontStack(!st.receipt_font || st.receipt_font === 'plex-mono' || st.receipt_font === 'courier' ? 'plex-arabic' : st.receipt_font) }}>
@@ -140,33 +146,33 @@ function A4Invoice({ data, tenant, branch, qr }: { data: ReceiptData; tenant: Te
           {st.logo_show !== false && tenant.logo_url && <img className="a4-logo" src={tenant.logo_url} alt="" />}
           <div><strong>{tenant.name}</strong>{tenant.name_ar && <div dir="rtl">{tenant.name_ar}</div>}
             {branch && <div>{branch.name}</div>}{st.receipt_address && <div className="r-pre">{st.receipt_address}</div>}
-            {st.receipt_phones && <div>☎ {st.receipt_phones}</div>}{st.receipt_cr && <div>CR / س.ت: {st.receipt_cr}</div>}
-            {tenant.tax_number && <div>VAT / الرقم الضريبي: {tenant.tax_number}</div>}</div>
+            {st.receipt_phones && <div>☎ {st.receipt_phones}</div>}{st.receipt_cr && <div>{L('CR', 'س.ت')}: {st.receipt_cr}</div>}
+            {tenant.tax_number && <div>{L('VAT', 'الرقم الضريبي')}: {tenant.tax_number}</div>}</div>
         </div>
         <div className="a4-title">
           <h1>{isCn ? 'CREDIT NOTE · إشعار دائن' : tenant.tax_number ? 'TAX INVOICE · فاتورة ضريبية' : 'INVOICE · فاتورة'}</h1>
           <table><tbody>
-            <tr><th>No. / الرقم</th><td>{data.number}</td></tr>
-            <tr><th>Date / التاريخ</th><td>{new Date(data.created_at).toLocaleString('en-GB')}</td></tr>
-            {data.original_number && <tr><th>Ref / مرجع</th><td>{data.original_number}</td></tr>}
-            {data.cashier && <tr><th>Cashier / الكاشير</th><td>{data.cashier}</td></tr>}
+            <tr><th>{L('No.', 'الرقم')}</th><td>{data.number}</td></tr>
+            <tr><th>{L('Date', 'التاريخ')}</th><td>{new Date(data.created_at).toLocaleString(dateLocale())}</td></tr>
+            {data.original_number && <tr><th>{L('Ref', 'مرجع')}</th><td>{data.original_number}</td></tr>}
+            {data.cashier && <tr><th>{L('Cashier', 'الكاشير')}</th><td>{data.cashier}</td></tr>}
           </tbody></table>
         </div>
       </header>
       {data.note && <p className="a4-note">{data.note}</p>}
-      {data.customer && <section className="a4-to"><b>Bill to / العميل</b><div>{data.customer.name}</div>{data.customer.phone && <div>{data.customer.phone}</div>}</section>}
+      {data.customer && <section className="a4-to"><b>{L('Bill to', 'العميل')}</b><div>{data.customer.name}</div>{data.customer.phone && <div>{data.customer.phone}</div>}</section>}
       <table className="a4-lines">
-        <thead><tr><th>#</th><th>Item / الصنف</th><th className="num">Qty / الكمية</th><th className="num">Amount / المبلغ ({tenant.currency})</th></tr></thead>
+        <thead><tr><th>#</th><th>{L('Item', 'الصنف')}</th><th className="num">{L('Qty', 'الكمية')}</th><th className="num">{L('Amount', 'المبلغ')} ({tenant.currency})</th></tr></thead>
         <tbody>{data.lines.map((l, i) => <tr key={i}><td>{i + 1}</td><td>{l.name}{l.promo && <small className="r-promo"> · {l.promo}</small>}</td><td className="num">{Number(l.qty)}</td><td className="num">{num(l.line_total, d)}</td></tr>)}</tbody>
       </table>
       <div className="a4-bottom">
         <div>{qr && <img src={qr} alt="ZATCA QR" width={120} height={120} />}
-          {data.payments.map((p, i) => <div key={i} className="small">{p.method ? p.method : `${TENDER_EN[p.tender]} / ${TENDER_AR[p.tender]}`}: {num(Math.abs(p.amount), d)}</div>)}</div>
+          {data.payments.map((p, i) => <div key={i} className="small">{p.method ? p.method : L(TENDER_EN[p.tender] ?? p.tender, TENDER_AR[p.tender] ?? p.tender)}: {num(Math.abs(p.amount), d)}</div>)}</div>
         <table className="a4-totals"><tbody>
-          {data.discount_total > 0 && <tr><th>Discount / الخصم</th><td>{num(data.discount_total, d)}</td></tr>}
-          <tr><th>Subtotal excl. VAT / المجموع قبل الضريبة</th><td>{num(data.subtotal, d)}</td></tr>
-          <tr><th>VAT / الضريبة</th><td>{num(data.tax_total, d)}</td></tr>
-          <tr className="grand"><th>TOTAL / الإجمالي {tenant.currency}</th><td>{num(data.total, d)}</td></tr>
+          {data.discount_total > 0 && <tr><th>{L('Discount', 'الخصم')}</th><td>{num(data.discount_total, d)}</td></tr>}
+          <tr><th>{L('Subtotal excl. VAT', 'المجموع قبل الضريبة')}</th><td>{num(data.subtotal, d)}</td></tr>
+          <tr><th>{L('VAT', 'الضريبة')}</th><td>{num(data.tax_total, d)}</td></tr>
+          <tr className="grand"><th>{L('TOTAL', 'الإجمالي')} {tenant.currency}</th><td>{num(data.total, d)}</td></tr>
         </tbody></table>
       </div>
       {st.receipt_terms && <footer className="a4-terms r-pre">{st.receipt_terms}</footer>}
