@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
@@ -35,7 +36,8 @@ export default function Settings() {
     { id: 'integrations' as const, label: 'Integrations', show: s.can('settings.manage') },
     { id: 'device' as const, label: 'This device', show: true },
   ].filter((x) => x.show)
-  const [tab, setTab] = useState<(typeof tabs)[number]['id']>(tabs[0].id)
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<(typeof tabs)[number]['id']>(() => (tabs.find((x) => x.id === params.get('tab'))?.id ?? tabs[0].id))
   return (
     <div className="page">
       <h1>{t('Settings')}</h1>

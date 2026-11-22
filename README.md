@@ -94,6 +94,15 @@ Open business types: 15 (adds bakery, florist, spa, car wash, gym and central ma
 | Attendance | Clock in/out from the phone within the branch radius; timesheet and CSV. |
 | Memberships check-in | Unlimited memberships (gym, car wash) checked in from the customer card. |
 
+## Design system, dashboard and POS (v4)
+
+- **Four themes plus Automatic**, switched live from the top bar or Ctrl K and saved per user (`user_prefs`, newest wins over localStorage): Executive Navy & Slate, Modern Emerald & Glass, Minimalist Pearl & Warm Gold, Obsidian Pro Dark. Each theme sets colours, corner radius, elevation and the Arabic font (`app/src/themes.css`, tokens only). Numbers use `tabular-nums`.
+- **Shell**: grouped sidebar that can be collapsed (Ctrl B, remembered), command palette (Ctrl K) that finds screens, actions, settings tabs, themes, customers, items, invoices and job cards, with deep links (`?c=`, `?q=`, `?new=1`, `?tab=`).
+- **Dashboard**: each user can show, hide and reorder widgets (drag or arrows), reset to the role default; periods Today / 7 / 30 days / month / custom range with comparison; profit widget (gross profit and margin from item cost, net profit from the income statement with `finance.view`); "Needs attention" widget (out of stock, below reorder point, batches expiring in 7 days, unpaid invoices and links, waiting online orders, open tables, late or ready jobs, today's appointments, deliveries).
+- **POS**: card network per country (KW: K-Net, Visa / Mastercard, Apple Pay; SA: mada, STC Pay…) stored on the payment and on the tender report; invoice discount (% or amount, spread over lines so discount limits and PIN approval still apply, F10); invoice note on the receipt and the sale; line notes for every business type; one-tap Park (F9) with recall chips; recalling a sale parks the one on screen.
+- **Report accuracy** (migration 0018): gift card and package sales are prepaid, not sales (`prepaid_sold` column); deposits and delivery cash appear in the tender report. `supabase/tests/reconcile.sql` cross-checks ledger, VAT, revenue, invoices = lines = payments, batches, gift cards, tender report and sales report.
+- `app/e2e/audit_crawl.mjs` opens every screen and tab in English and Arabic at 1440, 1024 and 800 px and reports errors, failed requests and overflow.
+
 ## Run it
 
 ```bash

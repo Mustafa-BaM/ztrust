@@ -99,7 +99,7 @@ log('internet cut for the whole shop: POS, kitchen tablet AND the hub cannot rea
 
 await pos.getByRole('button', { name: 'Dine-in' }).click(); await pos.fill('#pos-table', '5')
 await pos.locator('.tile', { hasText: 'Mixed grill' }).click(); await pos.locator('.tile', { hasText: 'Mixed grill' }).click()
-await pos.getByRole('button', { name: /^Note/ }).click(); await pos.fill('#line-note', 'بدون بصل، حار'); await pos.getByRole('button', { name: 'Save' }).click()
+await pos.getByRole('button', { name: /^Line note/ }).click(); await pos.fill('#line-note', 'بدون بصل، حار'); await pos.getByRole('button', { name: 'Save' }).click()
 await pos.locator('.tile', { hasText: 'Hummus' }).click()
 await pos.getByRole('button', { name: /Exact cash/ }).click()
 await pos.getByText('Saved offline').waitFor()

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Banknote, Bike, ChefHat, CreditCard, Gift, Hand, Inbox, Keyboard, LayoutGrid, Minus, MonitorSmartphone, PauseCircle, Plus, Save, ScanLine, Search, Tag, Ticket, UserRound, UsersRound, X } from 'lucide-react'
+import { Banknote, Bike, ChefHat, CreditCard, Gift, Hand, Inbox, Keyboard, LayoutGrid, Minus, MonitorSmartphone, PauseCircle, Plus, Save, ScanLine, Search, StickyNote, Tag, Ticket, UserRound, UsersRound, X } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CustomerPicker } from '../components/CustomerPicker'
-import { PayDialog } from '../components/PayDialog'
+import { cardMethods, PayDialog } from '../components/PayDialog'
 import { ModifierDialog, StaffPicker, TablesDialog, VariantPicker } from '../components/pos/Dialogs'
 import { DeliveryDialog, GiftCardDialog, IncomingOrders, type DeliveryInfo } from '../components/pos/Growth'
 import { PrintReceipt, Receipt, type ReceiptData } from '../components/Receipt'
 import { ApprovalDialog, Modal, useApproval } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
-import { calcCart, calcLine, fmt, num, toMinor } from '../lib/money'
+import { calcCart, calcLine, fmt, num, pgRound, toMinor } from '../lib/money'
 import { hubConnected, hubSend, useHub } from '../lib/hub'
 import { enqueueSale, loadCatalog, saveCatalog, useOnline, type Catalog } from '../lib/offline'
 import { applyPromotions } from '../lib/promotions'
@@ -18,7 +18,7 @@ import { parseError, publicAppUrl, rpc, supabase, uuid } from '../lib/supabase'
 import type { CartLine, Customer, CustomerPackage, DiningTable, Item, ModifierOption, OnlineOrder, OpenOrder, Sale, TenderEntry } from '../lib/types'
 
 type Mode = 'touch' | 'keys'
-type Held = { id: string; at: string; lines: CartLine[]; customer: Customer | null }
+type Held = { id: string; at: string; lines: CartLine[]; customer: Customer | null; note?: string }
 /** Checkout handed over from another screen (calendar, job card, table) */
 export interface CheckoutContext {
   lines: CartLine[]; customer: Customer | null; label?: string
@@ -50,6 +50,9 @@ export default function Pos() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [dialog, setDialog] = useState<null | 'pay' | 'customer' | 'qty' | 'discount' | 'held' | 'coupon' | 'staff' | 'tables' | 'delivery' | 'incoming'>(null)
   const [held, setHeld] = useState<Held[]>(() => ls.get<Held[]>('zt.held', []))
+  const [saleNote, setSaleNote] = useState('')
+  const [noteSale, setNoteSale] = useState(false)
+  const [cartDisc, setCartDisc] = useState(false)
   const [done, setDone] = useState<null | { receipt: ReceiptData; links: { token: string; amount: number }[] }>(null)
   const [printing, setPrinting] = useState<ReceiptData | null>(null)
   const [preApproval, setPreApproval] = useState<null | ((pin: string) => void)>(null)
@@ -202,7 +205,13 @@ export default function Pos() {
   }
 
   const setQty = (idx: number, qty: number) => setLines((cur) => qty <= 0 ? cur.filter((_, i) => i !== idx) : cur.map((l, i) => (i === idx ? { ...l, qty } : l)))
-  const clear = () => { setLines([]); setCustomer(null); setSel(0); setTable(''); setCtx(null); setCoupon(null); setSplitKeys(null); setMsg(null); setDelivery(null) }
+  const park = () => { if (!lines.length) return; setHeld((h) => [...h, { id: uuid(), at: new Date().toISOString(), lines, customer, note: saleNote || undefined }]); clear() }
+  const recall = (h: Held) => {
+    // the sale on screen is parked first so nothing is lost
+    setHeld((cur) => [...cur.filter((x) => x.id !== h.id), ...(lines.length ? [{ id: uuid(), at: new Date().toISOString(), lines, customer, note: saleNote || undefined }] : [])])
+    setLines(h.lines); setCustomer(h.customer); setSaleNote(h.note ?? ''); setSel(0)
+  }
+  const clear = () => { setLines([]); setCustomer(null); setSaleNote(''); setSel(0); setTable(''); setCtx(null); setCoupon(null); setSplitKeys(null); setMsg(null); setDelivery(null) }
   const hasKitchen = s.has('kitchen') && (catalog?.stations ?? 0) > 0
   const hub = useHub()
   const showImages = Boolean(st.pos_show_images)
@@ -230,7 +239,8 @@ export default function Pos() {
         F6: () => lines.length && setDialog('discount'),
         F7: () => lines.length && setNoteFor(sel),
         F8: () => lines.length && setDialog('pay'),
-        F9: () => setDialog('held'),
+        F9: () => (lines.length && !isTable ? park() : setDialog('held')),
+        F10: () => lines.length && setCartDisc(true),
         ArrowDown: () => setSel((x) => Math.min(x + 1, lines.length - 1)),
         ArrowUp: () => setSel((x) => Math.max(x - 1, 0)),
         Delete: () => lines.length && setQty(sel, 0),
@@ -286,11 +296,11 @@ export default function Pos() {
   function buildPayload(tenders: TenderEntry[], pin?: string) {
     return {
       tenant_id: tenant.id, branch_id: s.branch!.id, shift_id: shiftId, client_id: uuid(), customer_id: customer?.id ?? null,
-      device_created_at: new Date().toISOString(), approver_pin: pin ?? null, coupon,
+      device_created_at: new Date().toISOString(), approver_pin: pin ?? null, coupon, note: saleNote.trim() || null,
       lines: payLines.map((l) => ({ item_id: l.item_id, name: l.item_id ? null : l.name, qty: l.qty, unit_price: l.unit_price, discount: l.discount, note: l.note ?? null,
         modifiers: (l.modifiers ?? []).map((m) => m.id), staff_id: l.staff_id ?? null, promo_discount: l.promo_discount ?? 0, customer_package_id: l.customer_package_id ?? null, gift_code: l.gift_code ?? null })),
       kitchen: hasKitchen && !ctx?.open_order_id ? { order_type: tenders.some((x) => x.tender === 'platform') ? 'delivery' : orderType, table_no: orderType === 'dine_in' ? table : null, hub: hubConnected() } : null,
-      payments: tenders.map((x) => ({ tender: x.tender, amount: x.amount, reference: x.reference ?? null })),
+      payments: tenders.map((x) => ({ tender: x.tender, amount: x.amount, reference: x.reference ?? null, method: x.method ?? null })),
       channel_id: tenders.find((x) => x.tender === 'platform')?.channel_id ?? null,
       external_ref: tenders.find((x) => x.tender === 'platform')?.reference ?? null,
       appointment_id: ctx?.appointment_id ?? null, work_order_id: ctx?.work_order_id ?? null,
@@ -307,8 +317,8 @@ export default function Pos() {
       number, doc_type: 'invoice', created_at: new Date().toISOString(), offline,
       lines: payLines.map((l) => ({ name: lineName(l), qty: l.qty, line_total: calcLine(l, tenant.prices_include_tax).total, promo: l.promo_discount ? l.promo_name : undefined })),
       subtotal: totals.net, tax_total: totals.tax, total: totals.total, discount_total: totals.discount + totals.promo,
-      payments: [...auto, ...tenders].map((x) => ({ tender: x.tender, amount: x.amount, status: x.tender === 'payment_link' ? 'pending' : 'captured' })),
-      change, customer, cashier: s.member?.display_name,
+      payments: [...auto, ...tenders].map((x) => ({ tender: x.tender, amount: x.amount, method: x.method, status: x.tender === 'payment_link' ? 'pending' : 'captured' })),
+      change, customer, note: saleNote.trim() || null, cashier: s.member?.display_name,
     }
   }
 
@@ -468,8 +478,17 @@ export default function Pos() {
         <header className="cart-head">
           <button className="ghost" onClick={() => setDialog('customer')}><UserRound size={16} aria-hidden="true" />{customer ? customer.name : t('Walk-in customer')} <kbd>F3</kbd>
             {points != null && <em className="badge pts">{t('{n} pts', { n: points })}</em>}</button>
-          {!isTable && <button className="ghost" onClick={() => setDialog('held')}><PauseCircle size={16} aria-hidden="true" />{t('Hold / recall')} <kbd>F9</kbd>{held.length > 0 && <em className="badge">{held.length}</em>}</button>}
+          {!isTable && <button className="ghost" disabled={!lines.length} onClick={park} title={t('Park this sale and start a new one')}><PauseCircle size={16} aria-hidden="true" />{t('Park')} <kbd>F9</kbd></button>}
         </header>
+        {!isTable && held.length > 0 && (
+          <div className="park-chips" aria-label={t('Parked sales')}>
+            {held.map((h) => (
+              <button key={h.id} className="chipbtn" onClick={() => recall(h)} title={t('Recall')}>
+                <PauseCircle size={13} aria-hidden="true" />{h.customer?.name ?? new Date(h.at).toLocaleTimeString(lang === 'ar' ? 'ar-KW' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}
+                <b>{num(calcCart(h.lines, tenant.prices_include_tax).total, d)}</b></button>))}
+            <button className="chipbtn ghost" onClick={() => setDialog('held')}>{t('All')}</button>
+          </div>)}
+        {saleNote && <button className="sale-note" onClick={() => setNoteSale(true)}><StickyNote size={14} aria-hidden="true" />{saleNote}</button>}
         <div className="paper">
           <div className="paper-head"><span>{isTable ? ctx?.label : t('Ticket')}</span><span>{Number(lines.reduce((a, l) => a + l.qty, 0).toFixed(3))} {t('items')}</span></div>
           <ul className="cart-lines">
@@ -522,7 +541,9 @@ export default function Pos() {
         <div className="cart-actions">
           <button disabled={!line} onClick={() => setDialog('qty')}>{t('Qty')} <kbd>F4</kbd></button>
           <button disabled={!line} onClick={() => setDialog('discount')}>{t('Discount')} <kbd>F6</kbd></button>
-          {(hasKitchen || isTable) && <button disabled={!line} onClick={() => setNoteFor(sel)}>{t('Note')} <kbd>F7</kbd></button>}
+          <button disabled={!line} onClick={() => setNoteFor(sel)}>{t('Line note')} <kbd>F7</kbd></button>
+          <button disabled={!lines.length} onClick={() => setCartDisc(true)}>{t('Invoice discount')} <kbd>F10</kbd></button>
+          <button onClick={() => setNoteSale(true)}><StickyNote size={15} aria-hidden="true" />{t('Invoice note')}</button>
           {usesStaff && <button disabled={!line} onClick={() => setDialog('staff')}><UsersRound size={15} aria-hidden="true" />{t('Staff')}</button>}
           {hasCoupons && <button onClick={() => setDialog('coupon')}><Tag size={15} aria-hidden="true" />{coupon ?? t('Coupon')}</button>}
           <button disabled={!line} onClick={() => setQty(sel, 0)}>{t('Remove')} <kbd>Del</kbd></button>
@@ -539,8 +560,8 @@ export default function Pos() {
         <div className="pay-row">
           <button className="quick" disabled={!payLines.length || busy || due <= 0} onClick={() => void finish([{ tender: 'cash', amount: due }], 0)} title={t('Customer pays the exact amount in cash')}>
             <Banknote size={18} aria-hidden="true" />{t('Exact cash')}</button>
-          <button className="quick" disabled={!payLines.length || busy || due <= 0} onClick={() => void finish([{ tender: 'card', amount: due }], 0)} title={t('Paid in full by card')}>
-            <CreditCard size={18} aria-hidden="true" />{t('Card')}</button>
+          <button className="quick" disabled={!payLines.length || busy || due <= 0} onClick={() => void finish([{ tender: 'card', amount: due, method: cardMethods(tenant.country_code)[0] }], 0)} title={t('Paid in full by card')}>
+            <CreditCard size={18} aria-hidden="true" />{t('Card')}<small className="quick-sub">{cardMethods(tenant.country_code)[0]}</small></button>
           <button className="primary pay-btn" disabled={!payLines.length || busy} onClick={() => (due <= 0 ? void finish([], 0) : setDialog('pay'))}>
             <span>{busy ? t('Please wait…') : due <= 0 ? t('Confirm') : t('Pay')}</span><b>{fmt(due, tenant, lang)}</b><kbd>F8</kbd>
           </button>
@@ -589,14 +610,17 @@ export default function Pos() {
       {dialog === 'held' && (
         <Modal title={t('Held sales')} onClose={() => setDialog(null)}>
           <div className="stack">
-            <button className="primary" disabled={!lines.length} onClick={() => { setHeld([...held, { id: uuid(), at: new Date().toISOString(), lines, customer }]); clear(); setDialog(null) }}>{t('Hold current sale')}</button>
+            <button className="primary" disabled={!lines.length} onClick={() => { park(); setDialog(null) }}>{t('Hold current sale')}</button>
             <ul className="pick-list">{held.map((h) => (
-              <li key={h.id}><button onClick={() => { setLines(h.lines); setCustomer(h.customer); setHeld(held.filter((x) => x.id !== h.id)); setDialog(null) }}>
+              <li key={h.id}><button onClick={() => { recall(h); setDialog(null) }}>
                 <b>{new Date(h.at).toLocaleTimeString()}</b><span>{h.lines.length} {t('items')} · {fmt(calcCart(h.lines, tenant.prices_include_tax).total, tenant, lang)}</span></button></li>
             ))}</ul>
           </div>
         </Modal>
       )}
+      {noteSale && <TextDialog title={t('Invoice note')} initial={saleNote} suggestions={[]} onClose={() => setNoteSale(false)} onSave={(v) => { setSaleNote(v.trim()); setNoteSale(false) }} />}
+      {cartDisc && <DiscountDialog title={t('Invoice discount')} lineTotal={discBase(lines).reduce((a, b) => a + b, 0)} decimals={d} onClose={() => setCartDisc(false)}
+        onSave={(minor) => { setLines(spreadDiscount(lines, minor)); setCartDisc(false) }} />}
       {noteFor !== null && lines[noteFor] && (
         <TextDialog title={t('Note')} initial={lines[noteFor].note ?? ''} suggestions={hasKitchen || isTable ? [t('No onion'), t('Extra hot'), t('No sugar'), t('Well done')] : []}
           onClose={() => setNoteFor(null)} onSave={(v) => { setLines(lines.map((l, i) => (i === noteFor ? { ...l, note: v.trim() || undefined } : l))); setNoteFor(null) }} />
@@ -658,14 +682,33 @@ function NumberDialog({ title, initial, onSave, onClose }: { title: string; init
   )
 }
 
-function DiscountDialog({ lineTotal, decimals, onSave, onClose }: { lineTotal: number; decimals: number; onSave: (minor: number) => void; onClose: () => void }) {
+/** What each line can be discounted on: its price × qty less promotions. Package sessions and gift cards are never discounted. */
+function discBase(lines: CartLine[]) {
+  return lines.map((l) => (l.customer_package_id || l.gift_code ? 0 : Math.max(0, pgRound(l.qty * l.unit_price) - (l.promo_discount ?? 0))))
+}
+/** An invoice discount is spread over the lines in proportion to their value, as ordinary line discounts (so discount limits and approvals still apply). */
+export function spreadDiscount(lines: CartLine[], total: number): CartLine[] {
+  const base = discBase(lines), sum = base.reduce((a, b) => a + b, 0)
+  if (sum <= 0) return lines
+  const amt = Math.min(total, sum)
+  let left = amt
+  const last = base.map((b, i) => (b > 0 ? i : -1)).filter((i) => i >= 0).pop()!
+  return lines.map((l, i) => {
+    if (base[i] <= 0) return l
+    const share = i === last ? left : Math.min(base[i], Math.floor((amt * base[i]) / sum))
+    left -= share
+    return { ...l, discount: share }
+  })
+}
+
+function DiscountDialog({ lineTotal, decimals, onSave, onClose, title }: { lineTotal: number; decimals: number; onSave: (minor: number) => void; onClose: () => void; title?: string }) {
   const { t } = useT()
   const [kind, setKind] = useState<'pct' | 'amt'>('pct')
   const [v, setV] = useState('')
   const minor = kind === 'pct' ? Math.round((lineTotal * (parseFloat(v) || 0)) / 100) : toMinor(v || '0', decimals)
   const ok = Number.isFinite(minor) && minor >= 0 && minor <= lineTotal
   return (
-    <Modal title={t('Line discount')} onClose={onClose}>
+    <Modal title={title ?? t('Line discount')} onClose={onClose}>
       <form className="stack" onSubmit={(e) => { e.preventDefault(); if (ok) onSave(minor) }}>
         <div className="seg"><button type="button" className={kind === 'pct' ? 'on' : ''} onClick={() => setKind('pct')}>%</button>
           <button type="button" className={kind === 'amt' ? 'on' : ''} onClick={() => setKind('amt')}>{t('Amount')}</button></div>

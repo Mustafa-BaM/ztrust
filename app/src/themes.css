@@ -1,0 +1,187 @@
+/* =====================================================================
+   Z Trust theme engine · design tokens
+   Each theme sets the same token set: colour, shape (corner radius), elevation (shadows), type (Arabic + Latin faces).
+   Components only read tokens, so a theme switch is instant and never touches component CSS.
+   data-theme on <html>: executive | emerald | pearl | obsidian | auto (executive by day, obsidian when the device is dark)
+   ===================================================================== */
+
+/* ---------- shared defaults (also the Executive theme) ---------- */
+:root {
+  --r-xs: 3px; --r-sm: 5px; --r-md: 7px; --r-lg: 10px; --radius: var(--r-md);
+  --shadow-1: 0 1px 2px rgb(15 23 42 / .06);
+  --shadow-2: 0 4px 14px -6px rgb(15 23 42 / .18);
+  --shadow-3: 0 24px 60px -12px rgb(15 23 42 / .35);
+  --good-soft: #DDF3EA;
+  --panel-ink: #E7ECF5; --panel-muted: #C6CEDD; --panel-line: #26304A; --panel-raised: #121A2E; --panel-accent: #8AA0FF; --panel-accent-soft: #1B2550;
+  --ar-body: "IBM Plex Sans Arabic"; --ar-display: "Noto Kufi Arabic";
+  --glass: var(--surface); --backdrop: none;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* ---------- 1. Executive Navy & Slate: precise corners, navy and steel grey, blue accents ---------- */
+:root[data-theme="executive"], :root[data-theme="auto"] {
+  --bg: #F1F3F7; --surface: #FFFFFF; --ink: #0F172A; --muted: #5A6478; --line: #D8DEE8;
+  --accent: #1E4FD8; --accent-ink: #FFFFFF; --accent-soft: #E5ECFD;
+  --amber: #E9A23B; --amber-soft: #FDF1DC; --amber-ink: #6A4300;
+  --good: #0F7A55; --good-soft: #DDF2E8; --bad: #B4361C; --bad-soft: #FBE6DF;
+  --rail: #0F1E3D; --rail-ink: #A7B3CB; --rail-on: #FFFFFF;
+  --panel-ink: #E8EDF7; --panel-muted: #B7C2D8; --panel-line: #24365C; --panel-raised: #16284D; --panel-accent: #8FB0FF; --panel-accent-soft: #1C3366;
+  --grid: #E4E8EF; --axis: #667085;
+  --r-xs: 3px; --r-sm: 4px; --r-md: 6px; --r-lg: 9px;
+  --display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  --ar-body: "IBM Plex Sans Arabic"; --ar-display: "Noto Kufi Arabic";
+  color-scheme: light;
+}
+
+/* ---------- 2. Modern Emerald & Glass: soft rounded corners, frosted surfaces, emerald and teal ---------- */
+:root[data-theme="emerald"] {
+  --bg: #E9F4F0; --surface: #FFFFFF; --ink: #072A24; --muted: #4E6B64; --line: #CFE3DC;
+  --accent: #047857; --accent-ink: #FFFFFF; --accent-soft: #D7F0E6;
+  --amber: #F2B53A; --amber-soft: #FFF2CC; --amber-ink: #6B4700;
+  --good: #047857; --good-soft: #D7F0E6; --bad: #BE3A1E; --bad-soft: #FCE7E0;
+  --rail: #053D31; --rail-ink: #A9D8C8; --rail-on: #FFFFFF;
+  --panel-ink: #E6F7F1; --panel-muted: #A9D2C4; --panel-line: #145848; --panel-raised: #0A4A3B; --panel-accent: #5EEAD4; --panel-accent-soft: #0E5C4B;
+  --grid: #D5E7E0; --axis: #5B7871;
+  --r-xs: 8px; --r-sm: 11px; --r-md: 14px; --r-lg: 20px;
+  --shadow-1: 0 1px 3px rgb(4 120 87 / .08);
+  --shadow-2: 0 10px 30px -14px rgb(4 120 87 / .35);
+  --shadow-3: 0 30px 70px -20px rgb(6 78 59 / .45);
+  --display: "Tajawal", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --body: "Tajawal", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --ar-body: "Tajawal"; --ar-display: "Tajawal";
+  --glass: rgb(255 255 255 / .66); --backdrop: blur(14px) saturate(150%);
+  color-scheme: light;
+}
+:root[data-theme="emerald"] body { background: radial-gradient(1200px 600px at 100% -10%, #C9EFE2 0%, transparent 60%), radial-gradient(900px 500px at -10% 110%, #CDEDF3 0%, transparent 55%), var(--bg) fixed }
+:root[data-theme="emerald"] :is(.card, .kpi2, .modal, .topbar, .tile, .paper, .table-wrap, .pay-row .quick) { background: var(--glass); -webkit-backdrop-filter: var(--backdrop); backdrop-filter: var(--backdrop); border-color: rgb(255 255 255 / .75) }
+:root[data-theme="emerald"] .side { background: linear-gradient(180deg, #065F4A, #053D31) }
+:root[data-theme="emerald"] h1, :root[data-theme="emerald"] h2 { font-stretch: 100% }
+
+/* ---------- 3. Minimalist Pearl & Warm Gold: pure white space, whisper shadows, gold and teal ---------- */
+:root[data-theme="pearl"] {
+  --bg: #FAF8F3; --surface: #FFFFFF; --ink: #1E1A14; --muted: #776D60; --line: #ECE5D8;
+  --accent: #8A6520; --accent-ink: #FFFFFF; --accent-soft: #F5ECDA;
+  --amber: #0F766E; --amber-soft: #DDF1EF; --amber-ink: #0B4F49;
+  --good: #0F766E; --good-soft: #DDF1EF; --bad: #A8432A; --bad-soft: #F8E7E0;
+  --rail: #FFFFFF; --rail-ink: #776D60; --rail-on: #1E1A14;
+  --panel-ink: #1E1A14; --panel-muted: #776D60; --panel-line: #ECE5D8; --panel-raised: #F7F2E8; --panel-accent: #8A6520; --panel-accent-soft: #F5ECDA;
+  --grid: #EFE9DE; --axis: #8A8073;
+  --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+  --shadow-1: 0 1px 2px rgb(80 60 20 / .04);
+  --shadow-2: 0 12px 32px -18px rgb(80 60 20 / .22);
+  --shadow-3: 0 30px 80px -24px rgb(60 45 15 / .30);
+  --display: "Cairo", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --body: "Cairo", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --ar-body: "Cairo"; --ar-display: "Cairo";
+  color-scheme: light;
+}
+:root[data-theme="pearl"] .side { border-inline-end: 1px solid var(--line); box-shadow: var(--shadow-1) }
+:root[data-theme="pearl"] .side nav a:hover, :root[data-theme="pearl"] .side nav a.active { background: var(--accent-soft); color: var(--accent) }
+:root[data-theme="pearl"] .rail-btn, :root[data-theme="pearl"] .side-toggle { color: var(--rail-ink) }
+:root[data-theme="pearl"] .pos-cart { background: var(--surface); border-inline-start: 1px solid var(--line) }
+:root[data-theme="pearl"] .pos-cart .seg button.on { background: var(--accent); color: var(--accent-ink) }
+:root[data-theme="pearl"] .pay-btn { background: var(--accent); color: var(--accent-ink) }
+:root[data-theme="pearl"] h1, :root[data-theme="pearl"] h2 { font-stretch: 100%; font-weight: 700 }
+
+/* ---------- 4. Obsidian Pro Dark: calm contrast for long shifts, bright primary actions and key figures ---------- */
+:root[data-theme="obsidian"] {
+  --bg: #0A0E16; --surface: #111723; --ink: #E4E9F2; --muted: #8E99AF; --line: #222B3D;
+  --accent: #5B9BFF; --accent-ink: #06101F; --accent-soft: #15243F;
+  --amber: #F5B83D; --amber-soft: #33270B; --amber-ink: #F7D58C;
+  --good: #3DD39A; --good-soft: #0F2C22; --bad: #F48A6C; --bad-soft: #3A1C13;
+  --rail: #06090F; --rail-ink: #7F8AA1; --rail-on: #FFFFFF;
+  --panel-ink: #E4E9F2; --panel-muted: #A3AEC4; --panel-line: #222B3D; --panel-raised: #161E2D; --panel-accent: #7DB0FF; --panel-accent-soft: #15243F;
+  --grid: #1D2536; --axis: #8E99AF;
+  --c1: #4C95F0; --c2: #E8713D; --c3: #2BB886; --c4: #D99A10; --c5: #E07AA3; --c6: #22B022; --c7: #9C92EE; --c8: #EE7070;
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+  --shadow-1: 0 1px 0 rgb(255 255 255 / .03);
+  --shadow-2: 0 12px 30px -16px rgb(0 0 0 / .8);
+  --shadow-3: 0 30px 80px -20px rgb(0 0 0 / .85);
+  --display: "Archivo", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --ar-body: "IBM Plex Sans Arabic"; --ar-display: "Noto Kufi Arabic";
+  color-scheme: dark;
+}
+:root[data-theme="obsidian"] :is(.kpi2-value, .paper-totals .grand, .pay-btn b) { color: var(--amber) }
+:root[data-theme="obsidian"] .pay-btn { background: var(--accent); color: var(--accent-ink) }
+
+/* "auto": the device decides between Executive and Obsidian */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --bg: #0A0E16; --surface: #111723; --ink: #E4E9F2; --muted: #8E99AF; --line: #222B3D;
+    --accent: #5B9BFF; --accent-ink: #06101F; --accent-soft: #15243F;
+    --amber: #F5B83D; --amber-soft: #33270B; --amber-ink: #F7D58C;
+    --good: #3DD39A; --good-soft: #0F2C22; --bad: #F48A6C; --bad-soft: #3A1C13;
+    --rail: #06090F; --rail-ink: #7F8AA1; --panel-raised: #161E2D; --panel-line: #222B3D; --panel-accent-soft: #15243F;
+    --grid: #1D2536; --axis: #8E99AF; color-scheme: dark;
+  }
+}
+
+/* ---------- applied to every theme ---------- */
+[dir="rtl"] body { font-family: var(--ar-body), var(--body) }
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3 { font-family: var(--ar-display), var(--display) }
+:is(.card, .kpi2, .table-wrap, .tile) { box-shadow: var(--shadow-1) }
+:is(.kpi2, .tile):hover { box-shadow: var(--shadow-2) }
+.modal { box-shadow: var(--shadow-3) }
+/* figures line up in every table, total and KPI */
+:is(table, .num, .kpi2-value, .kpi2-sub, .cl-total, .cl-q, .paper-totals, .tile-price, .pay-total, .entries, .r-row, .r-line, .a4, .display-totals, .mono) { font-variant-numeric: tabular-nums lining-nums }
+:focus-visible { outline: none; box-shadow: var(--focus) }
+/* arrows point the reading direction */
+[dir="rtl"] .flip-rtl { transform: scaleX(-1) }
+body, .side, .card, .kpi2, .modal, .tile, .paper { transition: background-color .2s ease, color .2s ease, border-color .2s ease }
+@media (prefers-reduced-motion: reduce) { body, .side, .card, .kpi2, .modal, .tile, .paper { transition: none } }
+
+/* =====================================================================
+   Shell v4: collapsible grouped sidebar, search bar, theme picker, command palette
+   ===================================================================== */
+.shell { grid-template-columns: 84px minmax(0, 1fr); transition: grid-template-columns .18s ease }
+.shell.side-open { grid-template-columns: 240px minmax(0, 1fr) }
+.nav-group { display: grid; gap: 3px }
+.nav-group + .nav-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--rail-ink) 18%, transparent) }
+.nav-group-title { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--rail-ink) 75%, transparent); padding: 2px 12px 4px; font-weight: 600 }
+.side-open .side { padding: 14px 12px }
+.side-open .rail-logo { display: flex; align-items: center; gap: 10px; justify-content: flex-start; padding: 0 6px 8px }
+.side-brand { font-family: var(--display); font-weight: 800; font-size: 1.05rem; color: var(--rail-on); letter-spacing: -.01em }
+.side-open .side nav a { grid-auto-flow: column; grid-template-columns: 22px 1fr; justify-items: start; align-items: center; gap: 10px; padding: 8px 12px; font-size: .9rem; text-align: start }
+.side-open .side nav a.active::before { inset-inline-start: -12px; top: 8px; bottom: 8px }
+.side-open .rail-foot { justify-items: stretch }
+.side-open .rail-btn { grid-auto-flow: column; grid-template-columns: 22px 1fr; justify-items: start; align-items: center; gap: 10px; font-size: .85rem; padding: 8px 12px; border-radius: var(--r-sm) }
+.me { display: flex; align-items: center; gap: 10px; justify-content: center; padding-top: 4px }
+.side-open .me { justify-content: flex-start; padding-inline: 8px }
+.me-txt { display: grid; line-height: 1.2; color: var(--rail-on); min-width: 0 } .me-txt small { color: var(--rail-ink); font-size: .74rem }
+.me-txt b { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.tb-search { display: inline-flex; align-items: center; gap: 8px; min-width: min(360px, 34vw); justify-content: flex-start; min-height: 36px; padding: 6px 10px; border-radius: var(--r-md);
+  background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-size: .88rem; margin-inline: auto }
+.tb-search span { flex: 1; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.tb-search kbd { opacity: .8 }
+.tb-icon { width: 36px; height: 36px; min-height: 36px; border-radius: var(--r-md) }
+.theme-picker { position: relative }
+.popover { position: absolute; inset-inline-end: 0; top: calc(100% + 8px); z-index: 60; width: min(380px, 92vw); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); padding: 8px }
+.theme-list { display: grid; gap: 4px } .theme-list.inline { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px }
+.theme-opt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; text-align: start; padding: 10px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; min-height: 0 }
+.theme-list.inline .theme-opt { border-color: var(--line); background: var(--surface) }
+.theme-opt:hover { background: var(--accent-soft) } .theme-opt.on { border-color: var(--accent); background: var(--accent-soft) }
+.theme-txt { display: grid; gap: 2px; min-width: 0 } .theme-txt small { color: var(--muted); font-size: .76rem; line-height: 1.3 }
+.swatch { display: grid; grid-template-columns: repeat(2, 14px); grid-template-rows: repeat(2, 14px); border-radius: 6px; overflow: hidden; border: 1px solid var(--line) }
+.swatch i { display: block }
+/* command palette */
+.palette-back { place-items: start center; padding-top: min(12vh, 120px) }
+.palette { width: min(640px, 100%); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 70vh; overflow: hidden }
+.palette-input { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line) }
+.palette-input input { flex: 1; border: 0; background: transparent; font-size: 1.05rem; padding: 4px 0; box-shadow: none !important; min-width: 0 }
+.palette-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto }
+.palette-group { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 10px 10px 4px; font-weight: 600 }
+.palette-list button { width: 100%; display: grid; grid-template-columns: 18px 1fr auto 16px; align-items: center; gap: 10px; text-align: start; padding: 9px 10px; border: 0; border-radius: var(--r-sm); background: transparent; min-height: 0 }
+.palette-list button small { color: var(--muted); font-variant-numeric: tabular-nums } .palette-list button.on { background: var(--accent-soft); color: var(--ink) }
+.palette-list .dim { opacity: 0 } .palette-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.palette-empty { padding: 20px; text-align: center }
+.palette-foot { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: .76rem }
+.palette-foot kbd { margin-inline: 0 3px }
+@media (max-width: 1100px) { .tb-search span { display: none } .tb-search { min-width: 0; margin-inline: 0 } }
+@media (max-width: 760px) {
+  .shell, .shell.side-open { grid-template-columns: 1fr }
+  .nav-group { display: contents } .nav-group-title { display: none }
+  .side-open .side nav a { grid-auto-flow: row; grid-template-columns: none; justify-items: center; font-size: .68rem; padding: 6px 2px; gap: 3px }
+  .tb-search { display: none }
+}

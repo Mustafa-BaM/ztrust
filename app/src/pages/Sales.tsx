@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PrintReceipt, tenderLabel, type ReceiptData } from '../components/Receipt'
 import { Empty, Modal, useApproval } from '../components/ui'
@@ -17,7 +18,8 @@ export default function Sales() {
   const tenant = s.tenant!
   const [from, setFrom] = useState(today())
   const [to, setTo] = useState(today())
-  const [q, setQ] = useState('')
+  const [params] = useSearchParams()
+  const [q, setQ] = useState(() => params.get('q') ?? '')
   const [rows, setRows] = useState<Sale[]>([])
   const [open, setOpen] = useState<Sale | null>(null)
   const [outbox, setOutbox] = useState<OutboxEntry[]>([])

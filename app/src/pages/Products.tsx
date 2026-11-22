@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { ChefHat, ImagePlus, Layers, ListPlus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Empty, Modal } from '../components/ui'
@@ -60,7 +61,9 @@ export default function Products() {
   const [cats, setCats] = useState<Category[]>([])
   const [stock, setStock] = useState<Record<string, number>>({})
   const [rcost, setRcost] = useState<Record<string, number>>({})
-  const [q, setQ] = useState('')
+  const [params, setParams] = useSearchParams()
+  const [q, setQ] = useState(() => params.get('q') ?? '')
+  useEffect(() => { if (params.get('new') && s.can('catalog.manage')) { setEdit({ price: 0, cost: 0, track_stock: true, is_active: true, item_type: 'standard', unit: 'pcs' }); setParams({}, { replace: true }) } }, [params, setParams, s])
   const [kind, setKind] = useState<Kind>('all')
   const [edit, setEdit] = useState<Partial<Item> | null>(null)
   const [recipeFor, setRecipeFor] = useState<Item | null>(null)

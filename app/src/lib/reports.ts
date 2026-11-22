@@ -122,7 +122,14 @@ export async function channelSales(r: Range) {
   const { data } = await scope(supabase.from('v_channel_sales').select('*'), r)
   return rollup((data ?? []) as { channel: string; platform: string | null; orders: number; net_sales: number }[], (x) => x.channel, ['orders', 'net_sales']).sort((a, b) => b.net_sales - a.net_sales)
 }
-export const mmss = (sec: number | null | undefined) => (sec == null ? '—' : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`)
+/** Durations: m:ss under an hour, then h:mm, then days + hours (a forgotten ticket shows "3d 4h", not "5745:59"). */
+export const mmss = (sec: number | null | undefined) => {
+  if (sec == null) return '—'
+  const s = Math.max(0, Math.round(sec))
+  if (s < 3600) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+}
 const avg = (xs: (number | null)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
 /** Kitchen performance summary per station (and "All"). */
 export function kitchenSummary(rows: KitchenRow[]) {

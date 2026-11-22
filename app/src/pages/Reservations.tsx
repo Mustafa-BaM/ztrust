@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { CalendarPlus, ChevronLeft, ChevronRight, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Empty, Modal } from '../components/ui'
@@ -23,6 +24,8 @@ export default function Reservations() {
   const [edit, setEdit] = useState<Partial<Res> | null>(null)
   const [w, setW] = useState({ name: '', phone: '', party: '2' })
   const [err, setErr] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
+  useEffect(() => { if (params.get('new')) { setEdit({ party: 2, duration_min: 90, starts_at: zoned(todayIn(tz), '20:00', tz).toISOString() }); setParams({}, { replace: true }) } }, [params, setParams, tz])
   const load = useCallback(async () => {
     if (!s.branch) return
     const from = zoned(day, '00:00', tz), to = new Date(from.getTime() + 86_400_000)
@@ -42,9 +45,9 @@ export default function Reservations() {
   return (
     <div className="page">
       <div className="row between wrap">
-        <div className="row"><button className="icon" aria-label={t('Previous day')} onClick={() => shift(-1)}><ChevronLeft size={18} /></button>
+        <div className="row"><button className="icon" aria-label={t('Previous day')} onClick={() => shift(-1)}><ChevronLeft size={18} className="flip-rtl" /></button>
           <input id="res-day" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-          <button className="icon" aria-label={t('Next day')} onClick={() => shift(1)}><ChevronRight size={18} /></button>
+          <button className="icon" aria-label={t('Next day')} onClick={() => shift(1)}><ChevronRight size={18} className="flip-rtl" /></button>
           <button className="ghost" onClick={() => setDay(todayIn(tz))}>{t('Today')}</button></div>
         <button className="primary" onClick={() => setEdit({ party: 2, duration_min: 90, starts_at: zoned(day, '20:00', tz).toISOString() })}><CalendarPlus size={16} />{t('New reservation')}</button>
       </div>

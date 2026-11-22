@@ -11,8 +11,9 @@ export interface ReceiptData {
   created_at: string
   lines: { name: string; qty: number; line_total: number; promo?: string }[]
   subtotal: number; tax_total: number; total: number; discount_total: number
-  payments: { tender: Tender; amount: number; status?: string }[]
+  payments: { tender: Tender; amount: number; status?: string; method?: string }[]
   change?: number
+  note?: string | null
   customer?: { name: string; phone?: string | null } | null
   cashier?: string
   offline?: boolean
@@ -73,6 +74,7 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
       {data.reason && <div className="r-row"><span>Reason / السبب</span><span>{data.reason}</span></div>}
       {data.customer && <div className="r-row"><span>{data.customer.name}</span><span>{data.customer.phone}</span></div>}
       {data.cashier && <div className="r-row"><span>Cashier / الكاشير</span><span>{data.cashier}</span></div>}
+      {data.note && <div className="r-note">{data.note}</div>}
       <hr />
       {data.lines.map((l, i) => (
         <div key={i} className="r-line"><span>{l.name}{l.promo && <small className="r-promo"> · {l.promo}</small>}</span><span>{Number(l.qty)} ×</span><span>{num(l.line_total, d)}</span></div>
@@ -84,7 +86,7 @@ export function Receipt({ data, tenant, branch }: { data: ReceiptData; tenant: T
       <div className="r-row r-big"><span>TOTAL / الإجمالي {tenant.currency}</span><span>{num(data.total, d)}</span></div>
       <hr />
       {data.payments.map((p, i) => (
-        <div key={i} className="r-row"><span>{TENDER_EN[p.tender]} / {TENDER_AR[p.tender]}{p.status === 'pending' ? ' (pending)' : ''}</span><span>{num(Math.abs(p.amount), d)}</span></div>
+        <div key={i} className="r-row"><span>{p.method ? p.method : `${TENDER_EN[p.tender]} / ${TENDER_AR[p.tender]}`}{p.status === 'pending' ? ' (pending)' : ''}</span><span>{num(Math.abs(p.amount), d)}</span></div>
       ))}
       {!!data.change && data.change > 0 && <div className="r-row r-big"><span>Change / الباقي</span><span>{num(data.change, d)}</span></div>}
       {qr && <div className="r-center"><img src={qr} alt="ZATCA QR" width={140} height={140} /></div>}
@@ -151,6 +153,7 @@ function A4Invoice({ data, tenant, branch, qr }: { data: ReceiptData; tenant: Te
           </tbody></table>
         </div>
       </header>
+      {data.note && <p className="a4-note">{data.note}</p>}
       {data.customer && <section className="a4-to"><b>Bill to / العميل</b><div>{data.customer.name}</div>{data.customer.phone && <div>{data.customer.phone}</div>}</section>}
       <table className="a4-lines">
         <thead><tr><th>#</th><th>Item / الصنف</th><th className="num">Qty / الكمية</th><th className="num">Amount / المبلغ ({tenant.currency})</th></tr></thead>
@@ -158,7 +161,7 @@ function A4Invoice({ data, tenant, branch, qr }: { data: ReceiptData; tenant: Te
       </table>
       <div className="a4-bottom">
         <div>{qr && <img src={qr} alt="ZATCA QR" width={120} height={120} />}
-          {data.payments.map((p, i) => <div key={i} className="small">{TENDER_EN[p.tender]} / {TENDER_AR[p.tender]}: {num(Math.abs(p.amount), d)}</div>)}</div>
+          {data.payments.map((p, i) => <div key={i} className="small">{p.method ? p.method : `${TENDER_EN[p.tender]} / ${TENDER_AR[p.tender]}`}: {num(Math.abs(p.amount), d)}</div>)}</div>
         <table className="a4-totals"><tbody>
           {data.discount_total > 0 && <tr><th>Discount / الخصم</th><td>{num(data.discount_total, d)}</td></tr>}
           <tr><th>Subtotal excl. VAT / المجموع قبل الضريبة</th><td>{num(data.subtotal, d)}</td></tr>

@@ -1,7 +1,7 @@
 import { Banknote, Plus, Printer, ShoppingBag } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CustomerPicker } from '../components/CustomerPicker'
 import { fontStack } from '../components/Receipt'
 import { Empty, Modal, useApproval } from '../components/ui'
@@ -28,7 +28,8 @@ export default function Orders() {
   const [list, setList] = useState<WorkOrder[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [items, setItems] = useState<Item[]>([])
-  const [q, setQ] = useState('')
+  const [params, setParams] = useSearchParams()
+  const [q, setQ] = useState(() => params.get('q') ?? '')
   const [edit, setEdit] = useState<Partial<WorkOrder> | null>(null)
   const [open, setOpen] = useState<WorkOrder | null>(null)
   const [printing, setPrinting] = useState<WorkOrder | null>(null)
@@ -42,6 +43,7 @@ export default function Orders() {
     setList((w.data ?? []) as WorkOrder[]); setCustomers((c.data ?? []) as Customer[]); setItems((i.data ?? []) as Item[])
   }, [s.branch, kind, tn.id])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { if (params.get('new')) { setEdit({ kind, lines: [] }); setParams({}, { replace: true }) } }, [params, setParams, kind])
   const cust = (id: string | null) => customers.find((c) => c.id === id)
   const shown = useMemo(() => { const n = norm(q); return list.filter((w) => !n || norm(w.number).includes(n) || norm(cust(w.customer_id)?.name ?? '').includes(n) || (cust(w.customer_id)?.phone ?? '').includes(q) || norm(w.reference ?? '').includes(n) || norm(w.tags ?? '').includes(n)) }, [list, q, customers])
   const balance = (w: WorkOrder) => Math.max(w.total - (w.deposit_paid - w.deposit_used), 0)

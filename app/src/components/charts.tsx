@@ -123,6 +123,7 @@ export function Donut({ items, format, center }: { items: Slice[]; format: (v: n
   })
   return (
     <div className="donut">
+      <div className="donut-ring">
       <svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label={items.map((i) => `${i.label} ${format(i.value)}`).join(', ')}>
         {arcs.map((a) => (
           <path key={a.key} d={a.d} fillRule="evenodd" className={`slice s${a.slot} ${hover && hover !== a.key ? 'dim' : ''}`}
@@ -130,6 +131,7 @@ export function Donut({ items, format, center }: { items: Slice[]; format: (v: n
         ))}
       </svg>
       <div className="donut-center">{center}</div>
+      </div>
       <ul className="legend">
         {arcs.map((a) => (
           <li key={a.key} className={hover === a.key ? 'on' : ''} onPointerEnter={() => setHover(a.key)} onPointerLeave={() => setHover(null)}>

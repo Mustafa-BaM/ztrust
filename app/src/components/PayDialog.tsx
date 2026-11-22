@@ -8,6 +8,17 @@ import { Modal } from './ui'
 
 const TENDERS: Tender[] = ['cash', 'card', 'on_account', 'payment_link', 'bank_transfer', 'store_credit']
 
+/** Card networks and wallets per country, first is the default. Stored with the payment so the tender report splits them. */
+export const CARD_METHODS: Record<string, string[]> = {
+  KW: ['K-Net', 'Visa / Mastercard', 'Apple Pay'],
+  SA: ['mada', 'Visa / Mastercard', 'Apple Pay', 'STC Pay'],
+  AE: ['Visa / Mastercard', 'Apple Pay', 'Google Pay'],
+  BH: ['BenefitPay', 'Visa / Mastercard', 'Apple Pay'],
+  QA: ['NAPS', 'Visa / Mastercard', 'Apple Pay'],
+  OM: ['OmanNet', 'Visa / Mastercard', 'Apple Pay'],
+}
+export const cardMethods = (country: string) => CARD_METHODS[country] ?? ['Visa / Mastercard', 'Apple Pay']
+
 /** Suggests the next banknotes above the amount due. */
 function quickCash(due: number, decimals: number): number[] {
   const unit = 10 ** decimals
@@ -43,6 +54,8 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
   const [amount, setAmount] = useState(num(total, d))
   const [ref, setRef] = useState('')
   const [channel, setChannel] = useState(channels[0]?.id ?? '')
+  const methods = cardMethods(tenant.country_code)
+  const [method, setMethod] = useState(methods[0])
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setAmount(num(Math.max(remaining, 0), d)); input.current?.select() }, [remaining, d])
@@ -76,7 +89,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
       if (tender === 'platform' && !channel) return
       if (tender === 'gift_card' && !ref.trim()) return
       const cap = tender === 'loyalty' ? Math.min(v, remaining, pointsValue - usedPts) : Math.min(v, remaining)
-      setEntries([...entries, { tender, amount: cap, reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined }])
+      setEntries([...entries, { tender, amount: cap, reference: ref || undefined, channel_id: tender === 'platform' ? channel : undefined, method: tender === 'card' ? method : undefined }])
     }
     setRef('')
   }
@@ -98,6 +111,10 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
             </button>
           ))}
         </div>
+        {tender === 'card' && (
+          <div className="method-row" role="radiogroup" aria-label={t('Card or wallet')}>
+            {methods.map((m) => <button key={m} type="button" role="radio" aria-checked={method === m} className={`chipbtn ${method === m ? 'on' : ''}`} onClick={() => setMethod(m)}>{m}</button>)}
+          </div>)}
         {points != null && <p className="muted small">{t('{n} points available, worth {v}', { n: points, v: fmt(pointsValue, tenant, lang) })}{minPts > 0 ? ` · ${t('minimum {n} points', { n: minPts })}` : ''}</p>}
         {!customer && <button className="link" onClick={onPickCustomer}>{t('Add a customer to use on account, payment link or store credit')}</button>}
 
@@ -129,7 +146,7 @@ export function PayDialog({ total, tenant, customer, online, channels = [], poin
         {entries.length > 0 && (
           <ul className="entries">
             {entries.map((e, i) => (
-              <li key={i}><span>{e.tender === 'platform' ? channels.find((c) => c.id === e.channel_id)?.display_name : tenderLabel(e.tender, lang)}{e.reference ? ` · ${e.reference}` : ''}</span><b>{fmt(e.amount, tenant, lang)}</b>
+              <li key={i}><span>{e.tender === 'platform' ? channels.find((c) => c.id === e.channel_id)?.display_name : e.method ?? tenderLabel(e.tender, lang)}{e.reference ? ` · ${e.reference}` : ''}</span><b>{fmt(e.amount, tenant, lang)}</b>
                 <button className="icon" aria-label={t('Remove')} onClick={() => { setEntries(entries.filter((_, j) => j !== i)); if (e.tender === 'cash') setChange(0) }}>✕</button></li>
             ))}
           </ul>

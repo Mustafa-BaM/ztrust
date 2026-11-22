@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
 import { Empty, Modal } from '../components/ui'
 import { useT } from '../lib/i18n'
@@ -17,6 +18,12 @@ export default function Customers() {
   const [edit, setEdit] = useState<Partial<Customer> | null>(null)
   const [view, setView] = useState<Customer | null>(null)
   const [tab, setTab] = useState<'customers' | 'gift'>('customers')
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const c = params.get('c'), n = params.get('new')
+    if (n) { setEdit({ credit_limit: 0 }); setParams({}, { replace: true }) }
+    if (c) void supabase.from('customers').select('*').eq('id', c).maybeSingle().then(({ data }) => { if (data) setView(data as Customer); setParams({}, { replace: true }) })
+  }, [params, setParams])
 
   const load = useCallback(async () => {
     let query = supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name').limit(300)

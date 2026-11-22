@@ -1,6 +1,6 @@
 import { CalendarPlus, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CustomerPicker } from '../components/CustomerPicker'
 import { Empty, Modal } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
@@ -35,6 +35,7 @@ export default function Calendar() {
   const [create, setCreate] = useState<{ staff_id: string; date: string; time: string } | null>(null)
   const [open, setOpen] = useState<Appt | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
 
   const load = useCallback(async () => {
     if (!s.branch) return
@@ -49,6 +50,7 @@ export default function Calendar() {
     setStaff((st.data ?? []) as Staff[]); setServices((sv.data ?? []) as Item[]); setAppts((ap.data ?? []) as Appt[]); setCustomers((cu.data ?? []) as Customer[])
   }, [day, s.branch, tn.id, tz])
   useEffect(() => { void load(); const id = window.setInterval(() => void load(), 30_000); return () => clearInterval(id) }, [load])
+  useEffect(() => { if (params.get('new') && staff.length) { setCreate({ staff_id: staff[0].user_id, date: day, time: `${String(Math.min(Math.max(partsIn(new Date(), tz).h + 1, START), END - 1)).padStart(2, '0')}:00` }); setParams({}, { replace: true }) } }, [params, setParams, staff, day, tz])
 
   const shift = (n: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); setDay(d.toISOString().slice(0, 10)) }
   const top = (iso: string) => { const p = partsIn(new Date(iso), tz); return ((p.h - START) * 60 + p.m) / SLOT * PX }
@@ -79,9 +81,9 @@ export default function Calendar() {
   return (
     <div className="page">
       <div className="row between wrap">
-        <div className="row"><button className="icon" aria-label={t('Previous day')} onClick={() => shift(-1)}><ChevronLeft size={18} /></button>
+        <div className="row"><button className="icon" aria-label={t('Previous day')} onClick={() => shift(-1)}><ChevronLeft size={18} className="flip-rtl" /></button>
           <input id="cal-day" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-          <button className="icon" aria-label={t('Next day')} onClick={() => shift(1)}><ChevronRight size={18} /></button>
+          <button className="icon" aria-label={t('Next day')} onClick={() => shift(1)}><ChevronRight size={18} className="flip-rtl" /></button>
           <button className="ghost" onClick={() => setDay(todayIn(tz))}>{t('Today')}</button></div>
         <button className="primary" disabled={!staff.length} onClick={() => setCreate({ staff_id: staff[0]?.user_id, date: day, time: `${String(Math.min(Math.max(partsIn(new Date(), tz).h + 1, START), END - 1)).padStart(2, '0')}:00` })}><CalendarPlus size={16} />{t('New appointment')}</button>
       </div>

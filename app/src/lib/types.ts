@@ -101,7 +101,7 @@ export interface CartLine {
   /** gift card sold: the code of a pre-printed card (optional) */
   gift_code?: string
 }
-export interface TenderEntry { tender: Tender; amount: number; reference?: string; channel_id?: string }
+export interface TenderEntry { tender: Tender; amount: number; reference?: string; channel_id?: string; /** card network or wallet: K-Net, mada, Apple Pay… */ method?: string }
 
 export interface RolePkg { tenant_id: string; key: string; name_en: string; name_ar: string; description_en: string | null; description_ar: string | null; template: string | null; is_system: boolean; sort: number }
 export interface PermDef { key: string; module: string; name_en: string; name_ar: string; limit_kind: 'pct' | 'money' | null; sort: number }
