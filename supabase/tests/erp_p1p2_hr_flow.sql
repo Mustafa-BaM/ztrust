@@ -11,6 +11,7 @@ grant all on c to authenticated, service_role;
 create or replace function pg_temp.v(text) returns text language sql as $$ select v from c where k = $1 $$;
 
 -- ---------- owner: Kuwait electronics shop (KWD, 3 decimals)
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '71111111-1111-1111-1111-111111111111', false);
 insert into c values ('t', public.create_tenant('{"name":"Volt Mobiles","country_code":"KW","business_type":"retail","branch_name":"Hawalli","display_name":"Huda","pin":"7777"}')::text);
@@ -36,6 +37,7 @@ insert into stock_movements(tenant_id, branch_id, item_id, qty, reason, unit_cos
 select pg_temp.v('t')::uuid, pg_temp.v('b')::uuid, id, 20, 'adjustment', cost from items where tenant_id = pg_temp.v('t')::uuid and not track_serial;
 
 -- ---------- purchase order for phones with serial numbers, then the supplier's bill (three-way match)
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '71111111-1111-1111-1111-111111111111', false);
 insert into c select 'po', public.save_po(jsonb_build_object('tenant_id', pg_temp.v('t'), 'branch_id', pg_temp.v('b'), 'supplier_id', pg_temp.v('sup'),
@@ -119,6 +121,7 @@ end $$;
 -- cash ceiling: owner sets 100.000 KWD and block
 reset role;
 update tenants set settings = settings || '{"cash_limit": 100000, "cash_limit_mode": "block"}' where id = pg_temp.v('t')::uuid;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '72222222-2222-2222-2222-222222222222', false);
 do $$ begin
@@ -152,6 +155,7 @@ do $$ begin
   assert (select coalesce(sum(debit - credit), 0) from journal_lines l join accounts a on a.id = l.account_id
            where l.tenant_id = pg_temp.v('t')::uuid and a.system_key = 'exchange_clearing') = 0, 'exchange clearing nets to zero';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '72222222-2222-2222-2222-222222222222', false);
 select public.close_shift(pg_temp.v('shift')::uuid, 20000);
@@ -210,6 +214,7 @@ end $$;
 -- ---------- HR & payroll: commission from the POS, an advance, unpaid leave
 reset role;
 update memberships set commission_pct = 5 where user_id = '72222222-2222-2222-2222-222222222222';
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '71111111-1111-1111-1111-111111111111', false);
 insert into employees(tenant_id, branch_id, user_id, name, join_date, basic_salary, allowances, civil_id_expiry)
@@ -242,5 +247,10 @@ do $$ begin
   assert (select sum(debit) = sum(credit) from journal_lines where tenant_id = pg_temp.v('t')::uuid), 'ledger balanced';
 end $$;
 
+do $$ begin
+  assert public._today(pg_temp.v('t')::uuid) = (now() at time zone 'Asia/Kuwait')::date, 'business date follows the Kuwait clock, not UTC';
+  assert (select entry_date from journal_entries where tenant_id = pg_temp.v('t')::uuid and source_type = 'payroll_payment') = (now() at time zone 'Asia/Kuwait')::date,
+         'entries without a date are dated on the local business day';
+end $$;
 \o
 select 'ALL P1 / P2 / HR ERP TESTS PASSED';

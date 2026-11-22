@@ -13,6 +13,7 @@ $$ select set_config('request.jwt.claim.sub', (select v from ax where ax.k = $1)
 create or replace function pg_temp.v(k text) returns text language sql as $$ select v from ax where ax.k = $1 $$;
 
 -- ---------- Saudi retailer (VAT 15% inclusive)
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into ax values ('t', public.create_tenant('{"name":"Riyadh Style","country_code":"SA","pin":"9999"}')::text);
@@ -34,6 +35,7 @@ do $$ begin
 end $$;
 
 -- ---------- sales by the cashier
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id','e0000000-0000-0000-0000-000000000001',
@@ -158,6 +160,7 @@ reset role;
 alter table journal_lines disable trigger user;
 update journal_lines set debit = debit + 1 where id = (select min(l.id) from journal_lines l where l.tenant_id = pg_temp.v('t')::uuid and l.debit > 0);
 alter table journal_lines enable trigger user;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('A');
 do $$ declare v jsonb; begin

@@ -22,6 +22,7 @@ do $$ begin
 end $$;
 
 -- ---------- a fashion shop signs up: only its built modules are on, no kitchen
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into px values ('t', public.create_tenant('{"name":"Lulu Fashion","country_code":"KW","business_profile":"fashion","pin":"9999"}')::text);
@@ -44,6 +45,7 @@ insert into customers(tenant_id, name, phone, credit_limit) values (pg_temp.v('t
 insert into px select 'cust', id::text from customers where tenant_id = pg_temp.v('t')::uuid;
 
 -- ---------- module switches: owner only; planned modules cannot be switched on
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('M');
 do $$ begin
@@ -66,6 +68,7 @@ end $$;
 reset role;
 
 -- ---------- server gates while modules are off
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ begin
@@ -83,6 +86,7 @@ do $$ begin
 end $$;
 
 -- ---------- owner switches credit and kitchen on: kitchen station appears, tickets flow; switched off again: no tickets
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.set_feature(pg_temp.v('t')::uuid, 'credit', true);
@@ -108,6 +112,7 @@ do $$ begin
 end $$;
 
 -- ---------- changing the business type adds the new profile's modules, keeps the old ones
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.set_business_profile(pg_temp.v('t')::uuid, 'stationery', true);
@@ -119,6 +124,7 @@ end $$;
 
 -- ---------- shop logo reaches the payment page
 update tenants set logo_url = 'https://cdn.example/logo.png' where id = pg_temp.v('t')::uuid;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into px select 'tok', (public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id',gen_random_uuid(),'customer_id',pg_temp.v('cust'),
@@ -132,6 +138,7 @@ do $$ declare tok text := pg_temp.v('tok'); begin
 end $$;
 
 -- ---------- webhooks: need the integrations module; secret shown once, never readable afterwards
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 do $$ begin
@@ -155,6 +162,7 @@ reset role;
 
 -- events: a sale (lines included, fired at commit), stock crossing the reorder point, a new customer, a refund
 insert into stock_movements(tenant_id, branch_id, item_id, qty, reason, unit_cost) values (pg_temp.v('t')::uuid, pg_temp.v('b')::uuid, pg_temp.v('abaya')::uuid, 6, 'receipt', 9000);
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into px select 'sale', (public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id',gen_random_uuid(),
@@ -171,6 +179,7 @@ do $$ declare p jsonb; begin
   assert (select count(*) from event_outbox where event = 'payment_link.paid' and tenant_id = pg_temp.v('t')::uuid) = 1, 'link paid event';
 end $$;
 -- a further sale below the reorder point does not repeat stock.low
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id',gen_random_uuid(),
@@ -181,6 +190,7 @@ do $$ begin
 end $$;
 
 -- test button + dispatcher contract: claim (with secret), fail with backoff, succeed
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into px select 'ping', public.test_webhook(pg_temp.v('wh')::uuid)::text;
@@ -216,6 +226,7 @@ end $$;
 do $$ begin
   assert pg_temp.fails('select public.claim_events(1)') = '', 'admin may run';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 do $$ begin
   assert pg_temp.fails('select * from public.claim_events(1)') = '42501', 'app users cannot claim events';
@@ -223,6 +234,7 @@ end $$;
 reset role;
 
 -- ---------- API keys: owner creates (shown once), scoped reads, revocation
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('M');
 do $$ begin
@@ -246,6 +258,7 @@ do $$ declare r jsonb; begin
   assert pg_temp.fails($q$select public.api_query('ztk_00000000_bad', 'items')$q$) = '42501', 'bad key';
 end $$;
 reset role;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.revoke_api_key((select id from api_keys where tenant_id = pg_temp.v('t')::uuid));
@@ -257,6 +270,7 @@ end $$;
 reset role;
 
 -- ---------- older callers that send only business_type keep every built module
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into px values ('t2', public.create_tenant('{"name":"Legacy Cafe","country_code":"KW","business_type":"food","pin":"9999"}')::text);

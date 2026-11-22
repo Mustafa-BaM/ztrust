@@ -14,6 +14,7 @@ create or replace function pg_temp.as_user(k text) returns void language sql as
 $$ select set_config('request.jwt.claim.sub', (select v from kx where kx.k = $1), false) $$;
 
 -- ---------- owner creates a café; role packages + default kitchen station are seeded
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into kx values ('t', public.create_tenant('{"name":"Bait Coffee","country_code":"KW","business_type":"food","pin":"9999"}')::text);
@@ -36,6 +37,7 @@ insert into items(tenant_id, category_id, name, price, cost) select (select v::u
 insert into items(tenant_id, category_id, name, price, cost) select (select v::uuid from kx where k='t'), id, 'Burger', 3000, 1000 from categories where name='Food';
 
 -- ---------- cashier sells dine-in: one ticket per station, line note travels to the kitchen
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into kx select 's1', (public.complete_sale(jsonb_build_object(
@@ -156,6 +158,7 @@ do $$ begin
 end $$;
 
 -- ---------- owner builds a custom role package; system packages cannot be deleted
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into roles(tenant_id, key, name_en, name_ar) select v::uuid, 'night_cashier', 'Night cashier', 'كاشير ليلي' from kx where k='t';

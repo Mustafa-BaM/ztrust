@@ -9,6 +9,7 @@ insert into rx values ('O','e1000000-0000-0000-0000-00000000000a'),('C','e100000
 create or replace function pg_temp.v(k text) returns text language sql as $$ select v from rx where rx.k = $1 $$;
 create or replace function pg_temp.as_user(k text) returns void language sql as $$ select set_config('request.jwt.claim.sub', (select v from rx where rx.k = $1), false) $$;
 
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into rx values ('t', public.create_tenant('{"name":"Shawarma Lab","country_code":"KW","business_type":"food","pin":"9999"}')::text);
@@ -35,6 +36,7 @@ do $$ begin
   assert (select public.recipe_cost(pg_temp.v('chicken_shawarma')::uuid)) = 290, 'recipe cost 0.15*1200 + 50 + 30*2 = 290';
 end $$;
 
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id','e2000000-0000-0000-0000-000000000001',
@@ -57,6 +59,7 @@ do $$ begin
 end $$;
 
 -- stock count: actual chicken 9.0 kg → loss 0.4 kg x 1.200 = 0.480 posted
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 do $$ declare r jsonb; begin
@@ -89,6 +92,7 @@ do $$ begin
   assert (select order_type from kitchen_tickets where sale_id = (select id from sales where channel_id = pg_temp.v('ch')::uuid)) = 'delivery', 'delivery type';
   assert (select sum(jl.debit - jl.credit) from journal_lines jl join accounts a on a.id = jl.account_id where a.system_key = 'platform_clearing' and jl.tenant_id = pg_temp.v('t')::uuid) = 2800, 'platform receivable';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.record_platform_settlement(jsonb_build_object('channel_id',pg_temp.v('ch'),'gross',2800,'commission',504,'reference','KEETA-PAYOUT-W47')) is not null;
@@ -105,6 +109,7 @@ do $$ declare tk uuid; begin
   perform set_config('zt.allow_rehash', '', false);
   update kitchen_tickets set created_at = now() - interval '14 minutes', started_at = now() - interval '12 minutes', ready_at = now() - interval '1 minute', served_at = now() where id = tk;
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 do $$ declare r record; begin

@@ -18,6 +18,7 @@ create or replace function pg_temp.sell(p_lines jsonb, p_pay jsonb, p_extra json
     'lines', p_lines, 'payments', p_pay) || p_extra) $$;
 grant execute on function pg_temp.sell(jsonb, jsonb, jsonb) to authenticated;
 
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into mx values ('t', public.create_tenant('{"name":"Mega Test","country_code":"KW","business_profile":"cafe","pin":"9999"}')::text);
@@ -53,6 +54,7 @@ insert into mx select 'o_' || lower(replace(name,' ','_')), id::text from modifi
 insert into item_modifier_groups(tenant_id, item_id, group_id, sort) values
   (pg_temp.v('t')::uuid, pg_temp.v('latte')::uuid, pg_temp.v('g_size')::uuid, 1), (pg_temp.v('t')::uuid, pg_temp.v('latte')::uuid, pg_temp.v('g_milk')::uuid, 2);
 
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ declare r jsonb; begin
@@ -71,6 +73,7 @@ end $$;
 -- ================================================================ B · variants
 insert into items(tenant_id, name, price, cost, sku) values (pg_temp.v('t')::uuid, 'Abaya', 25000, 9000, 'ABY');
 insert into mx select 'abaya', id::text from items where tenant_id = pg_temp.v('t')::uuid and name = 'Abaya';
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 do $$ begin
@@ -83,6 +86,7 @@ do $$ begin
   assert (select sku from items where parent_id = pg_temp.v('abaya')::uuid and variant_attrs = '{"Size":"M","Colour":"Navy"}') = 'ABY-NAV-M', 'variant sku';
 end $$;
 insert into mx select 'abaya_m_black', id::text from items where parent_id = pg_temp.v('abaya')::uuid and variant_attrs = '{"Size":"M","Colour":"Black"}';
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ begin
@@ -94,6 +98,7 @@ reset role;
 -- ================================================================ B · batches & expiry (FEFO), weighed items
 insert into items(tenant_id, name, price, cost, unit, track_expiry, sold_by_weight, plu) values (pg_temp.v('t')::uuid, 'Labneh', 2000, 800, 'kg', true, true, '00042');
 insert into mx select 'labneh', id::text from items where tenant_id = pg_temp.v('t')::uuid and name = 'Labneh';
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.receive_stock_batch(pg_temp.v('b')::uuid, pg_temp.v('labneh')::uuid, 5, 800, 'Almarai', 'L-LATE', current_date + 30);
@@ -106,6 +111,7 @@ do $$ begin
   assert (select on_hand from v_batches where item_id = pg_temp.v('labneh')::uuid and batch_no = 'L-SOON') = 0, 'FEFO: L-SOON emptied first';
   assert (select on_hand from v_batches where item_id = pg_temp.v('labneh')::uuid and batch_no = 'L-LATE') = 3.75, 'FEFO: rest from L-LATE';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 select public.write_off_batch((select id from stock_batches where batch_no = 'L-LATE' and item_id = pg_temp.v('labneh')::uuid), 0.75, 'Damaged');
@@ -140,6 +146,7 @@ do $$ declare a jsonb; begin
   assert jsonb_array_length(promo_allowance(pg_temp.v('t')::uuid, now(), '[{"idx":1,"item_id":null,"qty":1,"gross":4000}]')) = 0, 'no coupon, no discount';
   assert promo_allowance(pg_temp.v('t')::uuid, now(), '[{"idx":1,"item_id":null,"qty":1,"gross":4000}]', 'save5')->0->>'discount' = '500', 'coupon applies';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ declare r jsonb; begin
@@ -161,6 +168,7 @@ insert into items(tenant_id, name, price, item_type, duration_min, commission_pc
 insert into mx select lower(name), id::text from items where tenant_id = pg_temp.v('t')::uuid and item_type = 'service';
 insert into mx select 'day', (current_date + 2)::text;
 insert into mx select 'slot', (((current_date + 2) + time '10:00')::timestamp at time zone (select timezone from branches where id = pg_temp.v('b')::uuid))::text;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into mx select 'appt', public.save_appointment(jsonb_build_object('branch_id', pg_temp.v('b'), 'customer_id', pg_temp.v('cust'), 'staff_id', pg_temp.v('S'),
@@ -193,6 +201,7 @@ do $$ begin
 end $$;
 
 -- checkout the appointment: haircut by Noura → commission 10% of net; the appointment is completed
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select pg_temp.sell(jsonb_build_array(jsonb_build_object('item_id', pg_temp.v('haircut'), 'qty', 1, 'staff_id', pg_temp.v('S'))),
@@ -207,11 +216,13 @@ end $$;
 insert into items(tenant_id, name, price, item_type) values (pg_temp.v('t')::uuid, '4 haircuts', 16000, 'package');
 insert into mx select 'pkg_item', id::text from items where tenant_id = pg_temp.v('t')::uuid and name = '4 haircuts';
 insert into package_defs(tenant_id, item_id, kind, sessions, validity_days, covers) values (pg_temp.v('t')::uuid, pg_temp.v('pkg_item')::uuid, 'sessions', 4, 180, array[pg_temp.v('haircut')::uuid]);
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select pg_temp.sell(jsonb_build_array(jsonb_build_object('item_id', pg_temp.v('pkg_item'), 'qty', 1)), '[{"tender":"cash","amount":16000}]', jsonb_build_object('customer_id', pg_temp.v('cust')));
 reset role;
 insert into mx select 'cp', id::text from customer_packages where customer_id = pg_temp.v('cust')::uuid;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ declare r jsonb; begin
@@ -230,6 +241,7 @@ end $$;
 -- ================================================================ D · job card with deposit
 insert into items(tenant_id, name, price, item_type) values (pg_temp.v('t')::uuid, 'Shirt wash & iron', 500, 'service'), (pg_temp.v('t')::uuid, 'Suit dry clean', 3000, 'service');
 insert into mx select lower(split_part(name, ' ', 1)), id::text from items where tenant_id = pg_temp.v('t')::uuid and name in ('Shirt wash & iron','Suit dry clean');
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into mx select 'job', (public.save_work_order(jsonb_build_object('branch_id', pg_temp.v('b'), 'kind', 'job', 'customer_id', pg_temp.v('cust'), 'tags', '101-106',
@@ -247,6 +259,7 @@ end $$;
 
 -- ================================================================ D · table order: send to kitchen, add more, void needs approval, split the bill
 insert into dining_tables(tenant_id, branch_id, name, seats) values (pg_temp.v('t')::uuid, pg_temp.v('b')::uuid, 'T1', 4);
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 insert into mx select 'oo', (public.save_open_order(jsonb_build_object('branch_id', pg_temp.v('b'), 'table_id', (select id from dining_tables where name = 'T1'), 'guests', 2, 'fire', true,
@@ -268,6 +281,7 @@ do $$ begin
   assert (select count(*) from kitchen_tickets where open_order_id = pg_temp.v('oo')::uuid) = 2, 'two rounds sent to the kitchen';
   assert (select status || ' ' || jsonb_array_length(lines) from open_orders where id = pg_temp.v('oo')::uuid) = 'open 1', 'one line left';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select pg_temp.sell(jsonb_build_array(jsonb_build_object('item_id', pg_temp.v('latte'), 'qty', 2, 'modifiers', jsonb_build_array(pg_temp.v('o_small')))), '[{"tender":"cash","amount":3000}]',
@@ -283,6 +297,7 @@ do $$ begin
   -- Reem paid with money: haircut 5.000 (card) + package 16.000 (cash) + job 3.500 (card) = 24.500 → 245 points; the package session and the deposit earn nothing
   assert customer_points(pg_temp.v('cust')::uuid) = 245, 'points earned: ' || customer_points(pg_temp.v('cust')::uuid);
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ declare r jsonb; begin
@@ -300,6 +315,7 @@ end $$;
 do $$ begin
   assert (select sum(debit) - sum(credit) from journal_lines where tenant_id = pg_temp.v('t')::uuid) = 0, 'ledger balanced';
 end $$;
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 do $$ declare v jsonb := verify_ledger(pg_temp.v('t')::uuid); begin assert (v->>'chain_breaks')::int = 0 and (v->>'hash_mismatches')::int = 0 and (v->>'unbalanced_entries')::int = 0 and (v->>'numbering_gaps')::int = 0, 'hash chain intact: ' || verify_ledger(pg_temp.v('t')::uuid)::text; end $$;

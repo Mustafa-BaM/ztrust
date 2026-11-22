@@ -11,6 +11,7 @@ create or replace function pg_temp.v(k text) returns text language sql as $$ sel
 create or replace function pg_temp.as_user(k text) returns void language sql as
 $$ select set_config('request.jwt.claim.sub', (select v from hx where hx.k = $1), false) $$;
 
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('O');
 insert into hx values ('t', public.create_tenant('{"name":"Hub Cafe","country_code":"KW","business_type":"food","pin":"9999"}')::text);
@@ -22,6 +23,7 @@ insert into memberships(tenant_id, user_id, role, display_name) values (pg_temp.
 insert into items(tenant_id, name, name_ar, price) values (pg_temp.v('t')::uuid, 'Burger', 'برجر', 3000);
 
 -- owner creates the hub; cashier cannot
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 do $$ begin
@@ -59,6 +61,7 @@ do $$ begin
 end $$;
 
 -- the offline sale reaches the cloud later (with kitchen.hub = true): linked, renamed, no duplicate tickets
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id','f1000000-0000-0000-0000-000000000001',
@@ -75,6 +78,7 @@ do $$ begin
 end $$;
 
 -- the other order: the sale reaches the cloud BEFORE the hub syncs its ticket → invoice number used
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id','f1000000-0000-0000-0000-000000000003',
@@ -93,6 +97,7 @@ do $$ begin
 end $$;
 
 -- without a hub the cloud still creates tickets itself
+do $$ declare f record; begin for f in select p.oid::regprocedure s from pg_proc p where p.pronamespace = pg_my_temp_schema() loop execute format('grant execute on function %s to public', f.s); end loop; end $$;
 set role authenticated;
 select pg_temp.as_user('C');
 select public.complete_sale(jsonb_build_object('tenant_id',pg_temp.v('t'),'branch_id',pg_temp.v('b'),'client_id','f1000000-0000-0000-0000-000000000002',
