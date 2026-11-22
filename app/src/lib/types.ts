@@ -39,6 +39,7 @@ export interface TenantSettings {
   hr_annual_leave_days?: number; hr_days_per_month?: number; hr_indemnity_first_days?: number; hr_indemnity_first_years?: number
   hr_indemnity_after_days?: number; hr_indemnity_cap_months?: number
   petty_custodian?: string
+  hr_insurance_base?: 'basic' | 'gross'
   /** receipt labels: both languages (default), English or Arabic */
   receipt_langs?: 'both' | 'en' | 'ar'
 }
@@ -46,8 +47,10 @@ export interface TenantSettings {
 export interface ModifierGroup { id: string; name: string; name_ar: string | null; min_select: number; max_select: number; sort: number }
 export interface ModifierOption { id: string; group_id: string; name: string; name_ar: string | null; price: number; item_id: string | null; qty: number; is_active: boolean; sort: number }
 export interface Promotion {
-  id: string; name: string; name_ar: string | null; kind: 'percent' | 'amount' | 'bxgy' | 'bundle'
-  params: { percent?: number; amount?: number; min_amount?: number; buy?: number; get?: number; price?: number; components?: { item_id: string; qty: number }[] }
+  id: string; name: string; name_ar: string | null; kind: 'percent' | 'amount' | 'bxgy' | 'bundle' | 'qty_tier' | 'threshold'
+  params: { percent?: number; amount?: number; min_amount?: number; buy?: number; get?: number; price?: number; components?: { item_id: string; qty: number }[]
+    /** qty_tier: [{qty, percent}]; threshold: [{min, percent} | {min, amount}] */
+    tiers?: { qty?: number; min?: number; percent?: number; amount?: number }[] }
   item_ids: string[] | null; category_ids: string[] | null; min_qty: number; coupon_code: string | null
   starts_on: string | null; ends_on: string | null; weekdays: number[] | null; time_from: string | null; time_to: string | null; is_active: boolean
 }
@@ -78,11 +81,11 @@ export interface Item {
   id: string; tenant_id: string; category_id: string | null; name: string; name_ar: string | null; sku: string | null
   barcode: string | null; price: number; cost: number; tax_rate: number | null; track_stock: boolean; is_active: boolean
   image_url: string | null; item_type?: 'standard' | 'ingredient' | 'recipe' | 'service' | 'package' | 'gift_card'; unit?: string; reorder_point?: number | null
-  parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null; track_serial?: boolean; warranty_months?: number | null
+  parent_id?: string | null; is_template?: boolean; variant_attrs?: Record<string, string> | null; sold_by_weight?: boolean; plu?: string | null; track_serial?: boolean; warranty_months?: number | null; course?: number | null; brand_id?: string | null
   track_expiry?: boolean; commission_pct?: number | null; duration_min?: number | null
 }
 
-export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number; address?: string | null; price_list_id?: string | null }
+export interface Customer { id: string; tenant_id: string; name: string; phone: string | null; email: string | null; credit_limit: number; address?: string | null; price_list_id?: string | null; birthday?: string | null; tags?: string[] | null; preferences?: string | null }
 
 export interface SaleLine {
   id: string; item_id: string | null; name: string; qty: number; unit_price: number; discount: number; tax_rate: number
@@ -105,6 +108,8 @@ export interface CartLine {
   list_price: number; discount: number; tax_rate: number; note?: string
   /** serial / IMEI numbers, one per unit */
   serials?: string[]
+  /** reward of a punch card: the line is free, the customer's punches are used */
+  punch_program_id?: string
   /** chosen add-ons (prices already included in unit_price / list_price) */
   modifiers?: { id: string; name: string; name_ar: string | null; price: number }[]
   /** discount from a promotion, filled by the promotion engine */
@@ -123,7 +128,7 @@ export interface RolePkg { tenant_id: string; key: string; name_en: string; name
 export interface PermDef { key: string; module: string; name_en: string; name_ar: string; limit_kind: 'pct' | 'money' | null; sort: number }
 export interface RoleTemplate { key: string; name_en: string; name_ar: string; description_en: string; description_ar: string; sort: number; perms: Record<string, number | null> }
 export interface Station { id: string; tenant_id: string; branch_id: string; name: string; name_ar: string | null; mode: 'kds' | 'printer' | 'both'; alert_minutes: number; is_default: boolean; is_active: boolean; sort: number; printer_ip?: string | null; printer_port?: number; printer_width?: number }
-export interface KitchenItem { id: string; name: string; name_ar: string | null; qty: number; note: string | null; done: boolean }
+export interface KitchenItem { id: string; name: string; name_ar: string | null; qty: number; note: string | null; done: boolean; course?: number | null; held?: boolean }
 export interface KitchenTicket {
   id: string; station_id: string; sale_id: string | null; order_ref: string; order_type: 'dine_in' | 'takeaway' | 'delivery' | 'pickup'
   table_no: string | null; customer_name: string | null; note: string | null; status: 'new' | 'preparing' | 'ready' | 'served' | 'cancelled'

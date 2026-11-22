@@ -25,6 +25,7 @@ import Products from './pages/Products'
 import Reports from './pages/Reports'
 import Sales from './pages/Sales'
 import SalesDocs from './pages/SalesDocs'
+import ReceiptLink from './pages/ReceiptLink'
 import Hr from './pages/Hr'
 import Settings from './pages/Settings'
 import Shift from './pages/Shift'
@@ -68,6 +69,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/pay/:token" element={<PayLink />} />
+      <Route path="/r/:token" element={<ReceiptLink />} />
       <Route path="/book/:slug" element={<Book />} />
       <Route path="/order/:slug" element={<Order />} />
       <Route path="/display" element={<Display />} />

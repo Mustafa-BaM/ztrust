@@ -43,6 +43,18 @@ export function promoAllowance(promos: Promotion[], items: Item[], lines: PromoL
       for (let i = 0; i < Math.floor(units.length / chunk) * chunk; i++) {
         if (i % chunk >= buy) { const u = units[i]; d.set(u.idx, (d.get(u.idx) ?? 0) + pgRound((u.unit * (pr.params.percent ?? 100)) / 100)) }
       }
+    } else if (pr.kind === 'qty_tier') {
+      // quantity tiers on the qualifying lines together: the highest tier reached applies to all of them
+      const tier = [...(pr.params.tiers ?? [])].filter((x) => (x.qty ?? 0) <= qty).sort((a, b) => (b.qty ?? 0) - (a.qty ?? 0))[0]
+      if (!tier) continue
+      for (const x of q) d.set(x.idx, pgRound((x.gross * (tier.percent ?? 0)) / 100))
+    } else if (pr.kind === 'threshold') {
+      // spend thresholds: the highest one reached gives % or an amount, spread over the lines by value
+      const tier = [...(pr.params.tiers ?? [])].filter((x) => (x.min ?? 0) <= sum).sort((a, b) => (b.min ?? 0) - (a.min ?? 0))[0]
+      if (!tier || sum <= 0) continue
+      const disc = Math.min(tier.percent != null ? pgRound((sum * tier.percent) / 100) : tier.amount ?? 0, sum); let given = 0
+      const sorted = [...q].sort((a, b) => a.idx - b.idx)
+      sorted.forEach((x, i) => { const share = i === sorted.length - 1 ? disc - given : pgRound((disc * x.gross) / sum); given += share; d.set(x.idx, share) })
     } else {
       const comps = pr.params.components ?? []
       let sets = Infinity, setValue = 0
@@ -68,10 +80,12 @@ export function promoAllowance(promos: Promotion[], items: Item[], lines: PromoL
 
 /** Returns the cart with promo_discount filled in (package-session lines are left out). */
 export function applyPromotions(lines: CartLine[], promos: Promotion[], items: Item[], coupon: string | null, at = new Date()): CartLine[] {
-  if (!promos.length) return lines.map((l) => ({ ...l, promo_discount: 0, promo_name: undefined }))
+  if (!promos.length) return lines.map((l) => (l.punch_program_id ? { ...l, promo_discount: Math.max(pgRound(l.qty * l.unit_price) - l.discount, 0), promo_name: 'Punch card' } : { ...l, promo_discount: 0, promo_name: undefined }))
   const input = lines.map((l, i) => ({ idx: i + 1, item_id: l.item_id, qty: l.qty, gross: pgRound(l.qty * l.unit_price) }))
-  const hits = promoAllowance(promos, items, input.filter((_, i) => !lines[i].customer_package_id), at, coupon)
+  const hits = promoAllowance(promos, items, input.filter((_, i) => !lines[i].customer_package_id && !lines[i].punch_program_id), at, coupon)
   return lines.map((l, i) => {
+    // a punch-card reward is free in full (the server checks the punches)
+    if (l.punch_program_id) return { ...l, promo_discount: Math.max(pgRound(l.qty * l.unit_price) - l.discount, 0), promo_name: 'Punch card' }
     const h = hits.find((x) => x.idx === i + 1)
     // a line with a manual discount keeps it; the promotion fills the rest up to the line value
     const room = Math.max(pgRound(l.qty * l.unit_price) - l.discount, 0)

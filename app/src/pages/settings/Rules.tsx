@@ -22,6 +22,7 @@ export function RulesSettings() {
     hr_annual_leave_days: String(st.hr_annual_leave_days ?? 30), hr_days_per_month: String(st.hr_days_per_month ?? 26),
     hr_indemnity_first_days: String(st.hr_indemnity_first_days ?? 15), hr_indemnity_first_years: String(st.hr_indemnity_first_years ?? 5),
     hr_indemnity_after_days: String(st.hr_indemnity_after_days ?? 30), hr_indemnity_cap_months: String(st.hr_indemnity_cap_months ?? 18),
+    hr_insurance_base: st.hr_insurance_base ?? 'basic',
   })
   const [msg, setMsg] = useState<string | null>(null)
   const n = (v: string) => (v.trim() === '' ? undefined : Number(v))
@@ -34,6 +35,7 @@ export function RulesSettings() {
       quote_valid_days: n(f.quote_valid_days), hr_annual_leave_days: n(f.hr_annual_leave_days), hr_days_per_month: n(f.hr_days_per_month),
       hr_indemnity_first_days: n(f.hr_indemnity_first_days), hr_indemnity_first_years: n(f.hr_indemnity_first_years),
       hr_indemnity_after_days: n(f.hr_indemnity_after_days), hr_indemnity_cap_months: n(f.hr_indemnity_cap_months),
+      hr_insurance_base: f.hr_insurance_base as 'basic' | 'gross',
     }
     const { error } = await supabase.from('tenants').update({ settings: next }).eq('id', tn.id)
     setMsg(error ? error.message : t('Saved')); if (!error) await s.reload()
@@ -60,6 +62,8 @@ export function RulesSettings() {
       {fld('hr_indemnity_first_years', 'End of service: number of first years')}
       {fld('hr_indemnity_after_days', 'End of service: days per year after that')}
       {fld('hr_indemnity_cap_months', 'End of service: maximum (months of salary)')}
+      <label className="field"><span>{t('Social insurance is calculated on')}</span><select id="rule-ins-base" value={f.hr_insurance_base} onChange={(e) => setF({ ...f, hr_insurance_base: e.target.value as 'basic' | 'gross' })}>
+        <option value="basic">{t('Basic salary')}</option><option value="gross">{t('Basic salary + allowances')}</option></select></label>
       <div className="row end span2">{msg && <span className="muted">{msg}</span>}<button className="primary" onClick={() => void save()}>{t('Save')}</button></div>
     </section>
   )

@@ -115,6 +115,19 @@ Open business types: 15 (adds bakery, florist, spa, car wash, gym and central ma
 - **Security**: migration 0023 removes the implicit PUBLIC execute on functions (anonymous key limited to the public pages, hub, webhooks and API keys).
 - Tests: `supabase/tests/erp_p1p2_hr_flow.sql`, `app/e2e/p0_screens.mjs`.
 
+## Restaurants and retail (Foodics- and Dynamics 365 Commerce-level)
+
+- **Discounts**: quantity tiers (3+ → 10%, 6+ → 20%) and spend thresholds (spend 20 → 5%, spend 50 → 1.500 off), beside %, amount, buy X get Y (mix-and-match "cheapest free"), bundles, coupons and timed events; same engine on the till and the server.
+- **Loyalty tiers** (points multiplier by spend in the last 12 months) and **punch cards** (buy N, the reward is free; balance checked by the server).
+- **Coursing**: items carry a course; later courses wait on the kitchen screen until "Fire" (tickets from tables and from paid sales).
+- **Delivery zones**: fee line and minimum order per area / branch.
+- **Digital receipt**: link and public page `/r/:token` (no login), shared by WhatsApp or e-mail from the till and the sale.
+- **Menu engineering** report (Star / Plowhorse / Puzzle / Dog with advice) and **brands** (multi-brand / cloud kitchen) with sales by brand.
+- **Clienteling**: birthday, tags, preferences, notes with follow-up dates, birthday and tag filters.
+- **Store checklists**: opening / closing tasks ticked on the Shift screen with who and when.
+- **Payroll deductions**: social insurance per employee (employee share deducted, employer share as cost, both owed to the authority), fixed monthly deduction, gross / total deductions / net columns and totals; payslip shows each deduction.
+- Tests: `supabase/tests/restaurant_retail_flow.sql`, `app/e2e/restaurant_retail.mjs`.
+
 ## Run it
 
 ```bash

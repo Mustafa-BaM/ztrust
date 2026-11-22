@@ -24,11 +24,12 @@ export function GiftCardDialog({ item, decimals, onAdd, onClose }: { item: Item;
   )
 }
 
-export interface DeliveryInfo { address: string; phone: string; note: string; driver_id: string | null }
+export interface DeliveryInfo { address: string; phone: string; note: string; driver_id: string | null; zone_id?: string | null; fee?: number; zone_name?: string }
+export interface DeliveryZone { id: string; name: string; name_ar: string | null; fee: number; min_order: number; eta_min: number | null }
 
 /** Delivery by our own driver: where to, which driver (or later), and the payment can be cash on delivery. */
-export function DeliveryDialog({ customer, drivers, initial, onSave, onClose, onPickCustomer }: {
-  customer: Customer | null; drivers: { user_id: string; display_name: string }[]; initial: DeliveryInfo | null
+export function DeliveryDialog({ customer, drivers, initial, onSave, onClose, onPickCustomer, zones = [], decimals = 3 }: {
+  customer: Customer | null; drivers: { user_id: string; display_name: string }[]; initial: DeliveryInfo | null; zones?: DeliveryZone[]; decimals?: number
   onSave: (d: DeliveryInfo | null) => void; onClose: () => void; onPickCustomer: () => void
 }) {
   const { t } = useT()
@@ -38,6 +39,8 @@ export function DeliveryDialog({ customer, drivers, initial, onSave, onClose, on
       <form className="stack" onSubmit={(e) => { e.preventDefault(); if (f.address.trim()) onSave(f) }}>
         <div className="row"><button type="button" className="ghost" onClick={onPickCustomer}>{customer ? customer.name : t('Choose customer')}</button></div>
         <label className="field"><span>{t('Address')}</span><textarea id="dl-address" rows={2} required value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} placeholder={t('Area, block, street, house, floor')} /></label>
+        {zones.length > 0 && <label className="field"><span>{t('Delivery zone')}</span><select id="dl-zone" value={f.zone_id ?? ''} onChange={(e) => { const z = zones.find((x) => x.id === e.target.value); setF({ ...f, zone_id: z?.id ?? null, fee: z?.fee ?? 0, zone_name: z?.name }) }}>
+          <option value="">—</option>{zones.map((z) => <option key={z.id} value={z.id}>{z.name} · {t('fee')} {(z.fee / 10 ** decimals).toFixed(decimals)}{z.min_order ? ` · ${t('min.')} ${(z.min_order / 10 ** decimals).toFixed(decimals)}` : ''}{z.eta_min ? ` · ${z.eta_min} ${t('min')}` : ''}</option>)}</select></label>}
         <label className="field"><span>{t('Phone')}</span><input id="dl-phone" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
         <label className="field"><span>{t('Driver')}</span><select id="dl-driver" value={f.driver_id ?? ''} onChange={(e) => setF({ ...f, driver_id: e.target.value || null })}>
           <option value="">{t('Assign later')}</option>{drivers.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}</select></label>

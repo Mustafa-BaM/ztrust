@@ -1,3 +1,4 @@
+import { Brands as BrandsDialog } from './products/Brands'
 import { PriceLists } from './products/PriceLists'
 import { useSearchParams } from 'react-router-dom'
 import { ChefHat, ImagePlus, Layers, ListPlus, Trash2 } from 'lucide-react'
@@ -64,6 +65,7 @@ export default function Products() {
   const [rcost, setRcost] = useState<Record<string, number>>({})
   const [params, setParams] = useSearchParams()
   const [priceLists, setPriceLists] = useState(false)
+  const [brandsOpen, setBrands] = useState(false)
   const [q, setQ] = useState(() => params.get('q') ?? '')
   useEffect(() => { if (params.get('new') && s.can('catalog.manage')) { setEdit({ price: 0, cost: 0, track_stock: true, is_active: true, item_type: 'standard', unit: 'pcs' }); setParams({}, { replace: true }) } }, [params, setParams, s])
   const [kind, setKind] = useState<Kind>('all')
@@ -134,6 +136,7 @@ export default function Products() {
         {canEdit && <div className="row">
           {s.has('modifiers') && <button onClick={() => setMods(true)}><ListPlus size={16} />{t('Add-ons')}</button>}
           <button onClick={() => setPriceLists(true)}>{t('Price lists')}</button>
+          <button onClick={() => setBrands(true)}>{t('Brands')}</button>
           <label className="button">{t('Import CSV / Excel export')}<input id="import-file" type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = '' }} /></label>
           <button className="primary" onClick={() => setEdit({ price: 0, cost: 0, track_stock: true, is_active: true, item_type: kind === 'all' ? 'standard' : kind, unit: kind === 'ingredient' ? 'kg' : 'pcs' })}>{t('Add item')}</button>
         </div>}
@@ -171,6 +174,7 @@ export default function Products() {
         onSaved={async (saved) => { setEdit(null); await load(); if (saved?.item_type === 'recipe' && !edit.id) setRecipeFor(saved) }} />}
       {variantFor && <VariantDialog item={variantFor} decimals={d} onClose={() => setVariantFor(null)} onDone={async () => { setVariantFor(null); await load() }} />}
       {priceLists && <PriceLists items={items} onClose={() => setPriceLists(false)} />}
+      {brandsOpen && <BrandsDialog onClose={() => setBrands(false)} />}
       {mods && <ModifierManager items={items} decimals={d} onClose={() => setMods(false)} />}
       {recipeFor && <RecipeEditor item={recipeFor} items={items} decimals={d} onClose={() => setRecipeFor(null)} onSaved={async () => { setRecipeFor(null); await load() }} />}
     </div>
@@ -181,6 +185,8 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
   const { t } = useT()
   const s = useSession()
   const tn = s.tenant!
+  const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { void supabase.from('brands').select('id, name').eq('tenant_id', s.tenant!.id).eq('is_active', true).order('name').then(({ data }) => setBrands(data ?? [])) }, [s.tenant])
   const [f, setF] = useState({
     name: item.name ?? '', name_ar: item.name_ar ?? '', barcode: item.barcode ?? '', sku: item.sku ?? '',
     price: num(item.price ?? 0, decimals), cost: num(item.cost ?? 0, decimals), category_id: item.category_id ?? '',
@@ -189,6 +195,7 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
     image_url: item.image_url ?? null as string | null,
     sold_by_weight: item.sold_by_weight ?? false, plu: item.plu ?? '', track_expiry: item.track_expiry ?? false,
     track_serial: item.track_serial ?? false, warranty_months: item.warranty_months != null ? String(item.warranty_months) : '',
+    course: item.course != null ? String(item.course) : '', brand_id: item.brand_id ?? '',
     commission_pct: item.commission_pct == null ? '' : String(item.commission_pct), duration_min: String(item.duration_min ?? 30),
   })
   const types = itemTypes(s.has)
@@ -239,6 +246,7 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
       item_type: f.item_type, unit: f.unit, reorder_point: f.reorder_point === '' ? null : Number(f.reorder_point), image_url: f.image_url,
       sold_by_weight: f.sold_by_weight, plu: f.plu.trim() || null, track_expiry: f.track_expiry,
       track_serial: f.track_serial, warranty_months: f.warranty_months ? Number(f.warranty_months) : null,
+      course: f.course ? Number(f.course) : null, brand_id: f.brand_id || null,
       commission_pct: f.commission_pct === '' ? null : Number(f.commission_pct), duration_min: isService ? Number(f.duration_min) || 30 : null }
     if (!Number.isFinite(row.price)) return setErr(t('Enter a valid price'))
     const r = item.id ? await supabase.from('items').update(row).eq('id', item.id).select().single() : await supabase.from('items').insert(row).select().single()
@@ -285,6 +293,9 @@ function ItemForm({ item, cats, decimals, canCost, onClose, onSaved }: { item: P
         {!isIng && <label className="field"><span>{t('VAT % (blank = business default)')}</span><input id="item-tax" inputMode="decimal" value={f.tax_rate} onChange={(e) => set('tax_rate', e.target.value)} /></label>}
         <div className="stack">
           {f.item_type === 'standard' && <label className="check"><input id="item-track" type="checkbox" checked={f.track_stock} onChange={(e) => set('track_stock', e.target.checked)} />{t('Track stock')}</label>}
+          {s.has('kitchen') && ['standard', 'recipe'].includes(f.item_type) && <label className="field"><span>{t('Course')}</span><select id="item-course" value={f.course} onChange={(e) => set('course', e.target.value)}>
+            <option value="">{t('With the first course')}</option><option value="1">{t('Starters')}</option><option value="2">{t('Mains')}</option><option value="3">{t('Desserts')}</option><option value="4">{t('Drinks')}</option></select></label>}
+          {brands.length > 0 && <label className="field"><span>{t('Brand')}</span><select id="item-brand" value={f.brand_id} onChange={(e) => set('brand_id', e.target.value)}><option value="">—</option>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
           {s.has('serials') && f.item_type === 'standard' && <label className="check"><input id="item-serial" type="checkbox" checked={f.track_serial} onChange={(e) => set('track_serial', e.target.checked)} />{t('Track serial / IMEI numbers (one per unit)')}</label>}
           {s.has('serials') && f.item_type === 'standard' && f.track_serial && <label className="field"><span>{t('Warranty (months)')}</span><input id="item-warranty" inputMode="numeric" value={f.warranty_months} onChange={(e) => set('warranty_months', e.target.value)} /></label>}
           {s.has('batches') && (f.item_type === 'standard' || isIng) && <label className="check"><input id="item-expiry" type="checkbox" checked={f.track_expiry} onChange={(e) => set('track_expiry', e.target.checked)} />{t('Track batches and expiry dates (first to expire, first out)')}</label>}

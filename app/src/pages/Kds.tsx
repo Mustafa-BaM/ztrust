@@ -20,6 +20,8 @@ const ls = { get: (k: string) => { try { return localStorage.getItem(k) } catch 
  * Kitchen display: New → Preparing → Ready → Served, per station or all stations.
  * Updates arrive through Supabase Realtime, with a 10-second refresh as a fallback.
  */
+const COURSE: Record<number, string> = { 1: 'Starters', 2: 'Mains', 3: 'Desserts', 4: 'Drinks', 5: 'Extras' }
+
 export default function Kds() {
   const { t, lang } = useT()
   const s = useSession()
@@ -160,7 +162,8 @@ export default function Kds() {
                     {k.customer_name && <div className="small">{k.customer_name}</div>}
                     {k.note && <div className="t-note">{k.note}</div>}
                     <ul>{k.kitchen_ticket_items.map((i) => (
-                      <li key={i.id} className={i.done ? 'done' : ''}>
+                      <li key={i.id} className={`${i.done ? 'done' : ''} ${i.held ? 'held' : ''}`}>
+                        {i.course != null && <span className="course-tag">{t(COURSE[i.course] ?? 'Course {n}', { n: i.course })}{i.held ? ` · ${t('waiting')}` : ''}</span>}
                         <button disabled={!canBump} onClick={() => void toggleItem(i.id)}>
                           <b>{Number(i.qty)}×</b> {lang === 'ar' && i.name_ar ? i.name_ar : i.name}
                           {i.note && <em>{i.note}</em>}
@@ -169,6 +172,8 @@ export default function Kds() {
                     {canBump && (
                       <footer>
                         {k.status === 'ready' && <button onClick={() => void move(k, 'preparing')}>{t('Recall')}</button>}
+                        {(() => { const next = Math.min(...k.kitchen_ticket_items.filter((i) => i.held && i.course != null).map((i) => i.course as number))
+                          return Number.isFinite(next) ? <button onClick={() => void rpc('fire_course', { p_branch: branch.id, p_order_ref: k.order_ref, p_course: next }).then(() => load())}>{t('Fire')} {t(COURSE[next] ?? 'Course {n}', { n: next })}</button> : null })()}
                         <button onClick={() => (hubMode && stations.some((st) => st.id === k.station_id && st.printer_ip) ? hubSend({ type: 'ticket.print', id: k.id }) : setPrinting(k))}>{t('Print')}</button>
                         <button className="primary" onClick={() => void move(k, NEXT[k.status].to)}>{t(NEXT[k.status].label)}</button>
                       </footer>)}

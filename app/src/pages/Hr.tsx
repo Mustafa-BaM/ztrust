@@ -10,10 +10,10 @@ import { rpc, supabase } from '../lib/supabase'
 interface Emp { id: string; branch_id: string | null; user_id: string | null; name: string; name_ar: string | null; job_title: string | null; nationality: string | null; phone: string | null
   civil_id: string | null; civil_id_expiry: string | null; passport_no: string | null; passport_expiry: string | null; residency_expiry: string | null; health_card_expiry: string | null
   license_expiry: string | null; join_date: string; end_date: string | null; basic_salary: number; allowances: number; bank_name: string | null; iban: string | null
-  annual_leave_days: number | null; is_active: boolean }
+  annual_leave_days: number | null; is_active: boolean; insurance_pct: number; insurance_employer_pct: number; fixed_deduction: number; fixed_deduction_label: string | null }
 interface Overview { employee_id: string; name: string; years: number; leave_earned: number; leave_taken: number; leave_balance: number; indemnity: number; next_expiry: string | null; next_expiry_doc: string | null }
 interface Run { id: string; month: string; status: 'draft' | 'posted' | 'paid'; gross: number; deductions: number; net: number }
-interface PLine { id: string; employee_id: string; basic: number; allowances: number; commission: number; overtime: number; other_additions: number; unpaid_days: number; absence: number; advance: number; other_deductions: number; net: number; note: string | null }
+interface PLine { id: string; employee_id: string; basic: number; allowances: number; commission: number; overtime: number; other_additions: number; unpaid_days: number; absence: number; advance: number; other_deductions: number; insurance: number; insurance_employer: number; fixed_deduction: number; net: number; note: string | null }
 const DOCS: Record<string, string> = { civil_id: 'Civil ID', passport: 'Passport', residency: 'Residency', health_card: 'Health card', license: 'Professional licence' }
 const LEAVE: Record<string, string> = { annual: 'Annual', sick: 'Sick', emergency: 'Emergency', unpaid: 'Unpaid' }
 const daysTo = (d: string | null) => (d ? Math.ceil((Date.parse(d) - Date.now()) / 86400000) : null)
@@ -86,18 +86,20 @@ function EmpForm({ e, onClose, onSaved }: { e: Partial<Emp>; onClose: () => void
     branch_id: str(e.branch_id ?? s.branch?.id), civil_id: str(e.civil_id), civil_id_expiry: str(e.civil_id_expiry), passport_no: str(e.passport_no), passport_expiry: str(e.passport_expiry),
     residency_expiry: str(e.residency_expiry), health_card_expiry: str(e.health_card_expiry), license_expiry: str(e.license_expiry), join_date: str(e.join_date), end_date: str(e.end_date),
     basic_salary: e.basic_salary != null ? num(e.basic_salary, d) : '', allowances: e.allowances != null ? num(e.allowances, d) : '', bank_name: str(e.bank_name), iban: str(e.iban),
-    annual_leave_days: str(e.annual_leave_days), is_active: e.is_active === false ? 'no' : 'yes' })
+    annual_leave_days: str(e.annual_leave_days), is_active: e.is_active === false ? 'no' : 'yes',
+    insurance_pct: str(e.insurance_pct ?? ''), insurance_employer_pct: str(e.insurance_employer_pct ?? ''), fixed_deduction: e.fixed_deduction ? num(e.fixed_deduction, d) : '', fixed_deduction_label: str(e.fixed_deduction_label) })
   const [err, setErr] = useState<string | null>(null)
   async function save() {
     const row = { tenant_id: tn.id, name: f.name.trim(), name_ar: f.name_ar || null, job_title: f.job_title || null, nationality: f.nationality || null, phone: f.phone || null,
       user_id: f.user_id || null, branch_id: f.branch_id || null, civil_id: f.civil_id || null, civil_id_expiry: f.civil_id_expiry || null, passport_no: f.passport_no || null,
       passport_expiry: f.passport_expiry || null, residency_expiry: f.residency_expiry || null, health_card_expiry: f.health_card_expiry || null, license_expiry: f.license_expiry || null,
       join_date: f.join_date, end_date: f.end_date || null, basic_salary: toMinor(f.basic_salary || '0', d), allowances: toMinor(f.allowances || '0', d),
-      bank_name: f.bank_name || null, iban: f.iban.replace(/\s/g, '').toUpperCase() || null, annual_leave_days: f.annual_leave_days ? Number(f.annual_leave_days) : null, is_active: f.is_active === 'yes' }
+      bank_name: f.bank_name || null, iban: f.iban.replace(/\s/g, '').toUpperCase() || null, annual_leave_days: f.annual_leave_days ? Number(f.annual_leave_days) : null, is_active: f.is_active === 'yes',
+      insurance_pct: Number(f.insurance_pct || 0), insurance_employer_pct: Number(f.insurance_employer_pct || 0), fixed_deduction: toMinor(f.fixed_deduction || '0', d), fixed_deduction_label: f.fixed_deduction_label || null }
     const { error } = e.id ? await supabase.from('employees').update(row).eq('id', e.id) : await supabase.from('employees').insert(row)
     if (error) setErr(error.message); else onSaved()
   }
-  const txt = (k: string, label: string, type = 'text') => <label className="field"><span>{t(label)}{['basic_salary', 'allowances'].includes(k) ? ` (${tn.currency})` : ''}</span><input id={`emp-${k}`} type={type} inputMode={['basic_salary', 'allowances', 'annual_leave_days'].includes(k) ? 'decimal' : undefined} value={f[k]} onChange={(x) => setF({ ...f, [k]: x.target.value })} /></label>
+  const txt = (k: string, label: string, type = 'text') => <label className="field"><span>{t(label)}{['basic_salary', 'allowances', 'fixed_deduction'].includes(k) ? ` (${tn.currency})` : ''}</span><input id={`emp-${k}`} type={type} inputMode={['basic_salary', 'allowances', 'annual_leave_days', 'insurance_pct', 'insurance_employer_pct', 'fixed_deduction'].includes(k) ? 'decimal' : undefined} value={f[k]} onChange={(x) => setF({ ...f, [k]: x.target.value })} /></label>
   return (
     <Modal title={e.id ? t('Edit employee') : t('Add employee')} onClose={onClose} wide>
       <form className="grid2" onSubmit={(x) => { x.preventDefault(); void save() }}>
@@ -110,6 +112,10 @@ function EmpForm({ e, onClose, onSaved }: { e: Partial<Emp>; onClose: () => void
         <h3 className="span2 sub-h">{t('Salary and bank')}</h3>
         {txt('join_date', 'Joining date', 'date')}{txt('end_date', 'Last working day', 'date')}{txt('basic_salary', 'Basic salary')}{txt('allowances', 'Allowances')}
         {txt('bank_name', 'Bank')}{txt('iban', 'IBAN')}{txt('annual_leave_days', 'Annual leave days (empty = business default)')}
+        <h3 className="span2 sub-h">{t('Deductions')}</h3>
+        {txt('insurance_pct', 'Social insurance – employee share (%)')}{txt('insurance_employer_pct', 'Social insurance – employer share (%)')}
+        {txt('fixed_deduction', 'Fixed monthly deduction')}{txt('fixed_deduction_label', 'Fixed deduction reason (e.g. loan, housing)')}
+        <p className="muted small span2">{t('Rates depend on the employee (e.g. nationals or expatriates) and the country. The base (basic or basic + allowances) is set in Settings.')}</p>
         <label className="field"><span>{t('Status')}</span><select id="emp-active" value={f.is_active} onChange={(x) => setF({ ...f, is_active: x.target.value })}><option value="yes">{t('Active')}</option><option value="no">{t('Left')}</option></select></label>
         {err && <p className="error span2">{err}</p>}
         <div className="row end span2"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary" disabled={!f.name.trim() || !f.join_date}>{t('Save')}</button></div>
@@ -218,6 +224,10 @@ function Payroll() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `salaries-${month}.csv`; a.click()
   }
   const m = (v: number) => num(v, d)
+  const gross = (l: PLine) => l.basic + l.allowances + l.commission + l.overtime + l.other_additions
+  const ded = (l: PLine) => l.absence + l.insurance + l.advance + l.fixed_deduction + l.other_deductions
+  const sum = (k: keyof PLine) => lines.reduce((a, l) => a + Number(l[k] ?? 0), 0)
+  const employer = lines.reduce((a, l) => a + l.insurance_employer, 0)
   const Slip = ({ l }: { l: PLine }) => { const e = ename(l.employee_id)
     return (
       <div className="a4-doc payslip">
@@ -227,9 +237,13 @@ function Payroll() {
           <tr><td>{t('Basic salary')}</td><td className="num">{m(l.basic)}</td></tr><tr><td>{t('Allowances')}</td><td className="num">{m(l.allowances)}</td></tr>
           {l.commission > 0 && <tr><td>{t('Commission')}</td><td className="num">{m(l.commission)}</td></tr>}{l.overtime > 0 && <tr><td>{t('Overtime')}</td><td className="num">{m(l.overtime)}</td></tr>}
           {l.other_additions > 0 && <tr><td>{t('Other additions')}</td><td className="num">{m(l.other_additions)}</td></tr>}
+          <tr className="sub"><td><b>{t('Gross')}</b></td><td className="num"><b>{m(gross(l))}</b></td></tr>
           {l.absence > 0 && <tr><td>{t('Unpaid leave')} ({Number(l.unpaid_days)})</td><td className="num">−{m(l.absence)}</td></tr>}
+          {l.insurance > 0 && <tr><td>{t('Social insurance')}</td><td className="num">−{m(l.insurance)}</td></tr>}
+          {l.fixed_deduction > 0 && <tr><td>{e?.fixed_deduction_label || t('Fixed deduction')}</td><td className="num">−{m(l.fixed_deduction)}</td></tr>}
           {l.advance > 0 && <tr><td>{t('Advance instalment')}</td><td className="num">−{m(l.advance)}</td></tr>}
           {l.other_deductions > 0 && <tr><td>{t('Other deductions')}</td><td className="num">−{m(l.other_deductions)}</td></tr>}
+          {ded(l) > 0 && <tr className="sub"><td><b>{t('Total deductions')}</b></td><td className="num"><b>−{m(ded(l))}</b></td></tr>}
           <tr><td><b>{t('Net pay')}</b></td><td className="num"><b>{fmt(l.net, tn, lang)}</b></td></tr></tbody></table>
         {e?.iban && <p className="muted">{t('Paid to')} {e.bank_name ?? ''} · {e.iban}</p>}
       </div>) }
@@ -246,16 +260,21 @@ function Payroll() {
       </div>
       {approval.error && <p className="error">{approval.error}</p>}
       {!run ? <Empty title={t('No payroll for this month yet')} hint={t('Prepare it to bring in salaries, allowances, POS commissions, advance instalments and unpaid leave.')} /> : (
-        <div className="table-wrap"><table className="list compact">
+        <div className="table-wrap payroll-wrap"><table className="list compact payroll">
           <thead><tr><th>{t('Employee')}</th><th className="num">{t('Basic')}</th><th className="num">{t('Allowances')}</th><th className="num">{t('Commission')}</th><th className="num">{t('Overtime')}</th>
-            <th className="num">{t('Other +')}</th><th className="num">{t('Unpaid leave')}</th><th className="num">{t('Advance')}</th><th className="num">{t('Other −')}</th><th className="num">{t('Net')}</th><th /></tr></thead>
+            <th className="num">{t('Other +')}</th><th className="num gross">{t('Gross')}</th><th className="num">{t('Unpaid leave')}</th><th className="num">{t('Social insurance')}</th><th className="num">{t('Advance')}</th><th className="num">{t('Fixed deduction')}</th><th className="num">{t('Other −')}</th><th className="num ded">{t('Total deductions')}</th><th className="num">{t('Net')}</th><th /></tr></thead>
           <tbody>{lines.map((l) => <tr key={l.id}><td>{ename(l.employee_id)?.name}</td><td className="num">{m(l.basic)}</td><td className="num">{m(l.allowances)}</td><td className="num">{m(l.commission)}</td>
             {(['overtime', 'other_additions'] as const).map((k) => <td key={k} className="num">{run.status === 'draft' ? <input className="qty-in" aria-label={t(k === 'overtime' ? 'Overtime' : 'Other +')} inputMode="decimal" defaultValue={l[k] ? m(l[k]) : ''} onBlur={(e) => void editLine(l, k, e.target.value)} /> : m(l[k])}</td>)}
-            <td className="num">{l.absence ? `−${m(l.absence)}` : ''}</td><td className="num">{l.advance ? `−${m(l.advance)}` : ''}</td>
+            <td className="num gross"><b>{m(gross(l))}</b></td>
+            <td className="num">{l.absence ? `−${m(l.absence)}` : ''}</td><td className="num">{l.insurance ? `−${m(l.insurance)}` : ''}</td><td className="num">{l.advance ? `−${m(l.advance)}` : ''}</td><td className="num">{l.fixed_deduction ? `−${m(l.fixed_deduction)}` : ''}</td>
             <td className="num">{run.status === 'draft' ? <input className="qty-in" aria-label={t('Other −')} inputMode="decimal" defaultValue={l.other_deductions ? m(l.other_deductions) : ''} onBlur={(e) => void editLine(l, 'other_deductions', e.target.value)} /> : m(l.other_deductions)}</td>
-            <td className="num"><b>{m(l.net)}</b></td><td><button className="icon" aria-label={t('Payslip')} onClick={() => setSlip(l)}><Printer size={15} /></button></td></tr>)}
-            <tr><td><b>{t('Total')}</b></td><td colSpan={8} /><td className="num"><b>{fmt(run.net, tn, lang)}</b></td><td /></tr></tbody>
+            <td className="num ded">{ded(l) ? `−${m(ded(l))}` : ''}</td><td className="num"><b>{m(l.net)}</b></td><td><button className="icon" aria-label={t('Payslip')} onClick={() => setSlip(l)}><Printer size={15} /></button></td></tr>)}
+            <tr className="totals"><td><b>{t('Total')}</b></td>{(['basic', 'allowances', 'commission', 'overtime', 'other_additions'] as const).map((k) => <td key={k} className="num"><b>{m(sum(k))}</b></td>)}
+              <td className="num gross"><b>{m(lines.reduce((a, l) => a + gross(l), 0))}</b></td>
+              {(['absence', 'insurance', 'advance', 'fixed_deduction', 'other_deductions'] as const).map((k) => <td key={k} className="num"><b>{sum(k) ? `−${m(sum(k))}` : ''}</b></td>)}
+              <td className="num ded"><b>−{m(lines.reduce((a, l) => a + ded(l), 0))}</b></td><td className="num"><b>{fmt(run.net, tn, lang)}</b></td><td /></tr></tbody>
         </table></div>)}
+      {run && employer > 0 && <p className="muted small">{t('Employer share of social insurance (a cost, not deducted from pay)')}: <b>{fmt(employer, tn, lang)}</b></p>}
       {approval.dialog}
       {slip && <PrintDoc paper="a4" onDone={() => setSlip(null)}>{(slip === 'all' ? lines : [slip]).map((l) => <Slip key={l.id} l={l} />)}</PrintDoc>}
     </div>

@@ -118,6 +118,7 @@ export default function Shift() {
           </section>
         </>
       )}
+      <Checklists />
       {err && <p className="error">{err}</p>}
       {move && shiftId && <CashMoveDialog kind={move} shiftId={shiftId} onClose={() => setMove(null)} onDone={(x) => { setSummary(x); setMove(null) }} />}
       {print && (
@@ -196,5 +197,32 @@ function CashMoveDialog({ kind, shiftId, onClose, onDone }: { kind: 'in' | 'out'
       </form>
       {approval.dialog}
     </Modal>
+  )
+}
+
+/** Opening / closing / custom checklists for today at this branch: tick each task; who and when is kept. */
+function Checklists() {
+  const { t } = useT()
+  const s = useSession()
+  const [lists, setLists] = useState<{ id: string; name: string; items: string[] }[]>([])
+  const [runs, setRuns] = useState<Record<string, { done: Record<string, { by: string; at: string }>; completed_at: string | null }>>({})
+  const load = useCallback(async () => {
+    const [a, b] = await Promise.all([supabase.from('checklists').select('id, name, items').eq('tenant_id', s.tenant!.id).eq('is_active', true).order('name'),
+      supabase.from('checklist_runs').select('checklist_id, done, completed_at, run_date').eq('branch_id', s.branch!.id).order('run_date', { ascending: false }).limit(50)])
+    setLists(a.data ?? [])
+    const today = new Date().toLocaleDateString('en-CA')
+    setRuns(Object.fromEntries(((b.data ?? []) as { checklist_id: string; done: Record<string, { by: string; at: string }>; completed_at: string | null; run_date: string }[]).filter((r) => r.run_date === today).map((r) => [r.checklist_id, r])))
+  }, [s.tenant, s.branch])
+  useEffect(() => { void load() }, [load])
+  if (!lists.length) return null
+  return (
+    <section className="card stack">
+      <h2>{t('Today\'s checklists')}</h2>
+      {lists.map((l) => { const r = runs[l.id]
+        return <div key={l.id} className="stack"><b>{l.name}{r?.completed_at ? ` ✓` : ''}</b>
+          {l.items.map((it, i) => { const d = r?.done?.[String(i)]
+            return <label key={i} className="check"><input id={`ck-${l.id}-${i}`} type="checkbox" checked={Boolean(d)} onChange={async (e) => { await rpc('tick_checklist', { p_checklist: l.id, p_branch: s.branch!.id, p_index: i, p_done: e.target.checked }); void load() }} />
+              {it}{d && <span className="muted small"> · {d.by} {new Date(d.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}</label> })}</div> })}
+    </section>
   )
 }

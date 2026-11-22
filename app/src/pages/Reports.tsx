@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { tenderLabel } from '../components/Receipt'
 import { Empty } from '../components/ui'
+import { supabase } from '../lib/supabase'
 import { useT } from '../lib/i18n'
 import { num } from '../lib/money'
 import * as R from '../lib/reports'
 import { useSession } from '../lib/session'
 
-type Tab = 'daily' | 'items' | 'tenders' | 'cashiers' | 'kitchen' | 'channels' | 'commissions' | 'promotions' | 'exceptions' | 'vat' | 'tb'
+type Tab = 'daily' | 'items' | 'tenders' | 'cashiers' | 'kitchen' | 'channels' | 'commissions' | 'promotions' | 'exceptions' | 'vat' | 'tb' | 'menu' | 'brands'
 
 /** Every figure in minor units is shown in the tenant currency; every tab exports to CSV for Excel. */
 export default function Reports() {
@@ -27,6 +28,8 @@ export default function Reports() {
     { id: 'tenders', label: 'Payments', show: true },
     { id: 'cashiers', label: 'Cashiers', show: true },
     { id: 'kitchen', label: 'Kitchen times', show: s.has('kitchen') },
+    { id: 'menu', label: 'Menu engineering', show: costs },
+    { id: 'brands', label: 'Brands', show: true },
     { id: 'channels', label: 'Sales channels', show: s.has('delivery') },
     { id: 'commissions', label: 'Commissions', show: s.has('commissions') },
     { id: 'promotions', label: 'Promotions', show: s.has('promotions') },
@@ -53,6 +56,27 @@ export default function Reports() {
             [t('Average order time')]: R.mmss(x.total), [t('Average pickup')]: R.mmss(x.pickup), [t('On time')]: x.onTime == null ? '—' : `${x.onTime}%`, [t('Late')]: x.lateCount,
             [t('Slowest')]: x.slowest ? `${x.slowest.order_ref} · ${R.mmss(x.slowest.total_s)}` : '—' })))
           setExtra(rows); break
+        }
+        case 'menu': {
+          // Kasavana & Smith: popular = sold more than 70% of an equal share; profitable = margin per unit above the average
+          const it = (await R.itemSales(r)).filter((x) => x.item_id && Number(x.qty) > 0)   // menu items only (not fees or open lines)
+          const totQty = it.reduce((a, x) => a + Number(x.qty), 0), totMargin = it.reduce((a, x) => a + x.net - x.cost, 0)
+          const popLine = it.length ? (totQty / it.length) * 0.7 : 0, avgMargin = totQty ? totMargin / totQty : 0
+          const cls = (x: R.ItemRow) => { const pop = Number(x.qty) >= popLine, prof = (x.net - x.cost) / Number(x.qty) >= avgMargin
+            return pop && prof ? ['Star', 'Keep it prominent; protect quality and price.'] : pop ? ['Plowhorse', 'Popular but thin: raise the price a little or lower its cost.']
+              : prof ? ['Puzzle', 'Profitable but slow: promote it, move it up the menu, rename it.'] : ['Dog', 'Consider replacing or removing it.'] }
+          setRows(it.sort((a, b) => (b.net - b.cost) - (a.net - a.cost)).map((x) => { const [c, advice] = cls(x)
+            return { [t('Item')]: x.name, [t('Qty')]: Number(x.qty), [t('Net sales')]: m(x.net), [t('Margin per unit')]: m(Math.round((x.net - x.cost) / Number(x.qty))),
+              [t('Total margin')]: m(x.net - x.cost), [t('Class')]: t(c), [t('What to do')]: t(advice) } })); break
+        }
+        case 'brands': {
+          const [it, br, its] = await Promise.all([R.itemSales(r), supabase.from('brands').select('id, name').eq('tenant_id', tenant.id), supabase.from('items').select('id, brand_id').eq('tenant_id', tenant.id).not('brand_id', 'is', null)])
+          const brandOf = new Map(((its.data ?? []) as { id: string; brand_id: string }[]).map((x) => [x.id, x.brand_id]))
+          const names = new Map(((br.data ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name]))
+          const agg = new Map<string, { qty: number; net: number; cost: number }>()
+          for (const x of it) { const k = (x.item_id && brandOf.get(x.item_id)) || ''; const a = agg.get(k) ?? { qty: 0, net: 0, cost: 0 }; a.qty += Number(x.qty); a.net += x.net; a.cost += x.cost; agg.set(k, a) }
+          setRows([...agg.entries()].sort((a, b) => b[1].net - a[1].net).map(([k, a]) => ({ [t('Brand')]: k ? names.get(k) ?? '—' : t('No brand'), [t('Qty')]: a.qty, [t('Net sales')]: m(a.net),
+            ...(costs ? { [t('Margin')]: m(a.net - a.cost) } : {}) }))); break
         }
         case 'channels': setRows((await R.channelSales(r)).map((x) => ({ [t('Channel')]: x.channel === 'In store' ? t('In store') : x.channel, [t('Orders')]: x.orders, [t('Net sales')]: m(x.net_sales) }))); break
         case 'commissions': setRows((await R.commissions(r)).map((x) => ({ [t('Staff')]: x.staff_name, [t('Lines')]: x.lines, [t('Net sales')]: m(x.net), [t('Commission')]: m(x.commission) }))); break

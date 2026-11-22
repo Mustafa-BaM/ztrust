@@ -1,3 +1,4 @@
+import { ReceiptShare } from './Pos'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PrintReceipt, tenderLabel, type ReceiptData } from '../components/Receipt'
@@ -160,6 +161,7 @@ function SaleDetail({ sale, onClose, onChanged }: { sale: Sale; onClose: () => v
         </dl>
         <ul className="plain">{(sale.payments ?? []).map((p) => (
           <li key={p.id}>{tenderLabel(p.tender, lang)} · {fmt(p.amount, tenant, lang)} · {t(p.status)}{p.reference ? ` · ${p.reference}` : ''}</li>))}</ul>
+        {sale.doc_type === 'invoice' && (sale as Sale & { public_token?: string }).public_token && <ReceiptShare token={(sale as Sale & { public_token?: string }).public_token!} phone={sale.customer?.phone ?? ''} />}
         {(sale.links ?? []).filter((k) => k.status === 'pending').map((k) => (
           <div key={k.token} className="linkbox"><code>{publicAppUrl}/pay/{k.token}</code>
             <button onClick={() => navigator.clipboard?.writeText(`${publicAppUrl}/pay/${k.token}`).catch(() => undefined)}>{t('Copy link')}</button></div>))}

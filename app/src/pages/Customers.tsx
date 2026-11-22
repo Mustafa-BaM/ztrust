@@ -19,6 +19,8 @@ export default function Customers() {
   const [edit, setEdit] = useState<Partial<Customer> | null>(null)
   const [view, setView] = useState<Customer | null>(null)
   const [tab, setTab] = useState<'customers' | 'gift'>('customers')
+  const [tagF, setTagF] = useState('')
+  const [bdays, setBdays] = useState(false)
   const [params, setParams] = useSearchParams()
   useEffect(() => {
     const c = params.get('c'), n = params.get('new')
@@ -43,12 +45,14 @@ export default function Customers() {
       <div className="row between"><h1>{t('Customers')}</h1><button className="primary" onClick={() => setEdit({ credit_limit: 0 })}>{t('Add customer')}</button></div>
       {s.has('gift_cards') && <div className="tabs"><button className={tab === 'customers' ? 'on' : ''} onClick={() => setTab('customers')}>{t('Customers')}</button><button className={tab === 'gift' ? 'on' : ''} onClick={() => setTab('gift')}>{t('Gift cards')}</button></div>}
       {tab === 'gift' ? <GiftCards /> : <>
-      <input id="customers-q" className="search" placeholder={t('Search by name or phone')} value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="row wrap"><input id="customers-q" className="search" placeholder={t('Search by name or phone')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className={`chipbtn ${bdays ? 'on' : ''}`} onClick={() => setBdays(!bdays)}>{t('Birthdays this month')}</button>
+        {[...new Set(rows.flatMap((c) => c.tags ?? []))].map((g) => <button key={g} className={`chipbtn ${tagF === g ? 'on' : ''}`} onClick={() => setTagF(tagF === g ? '' : g)}>#{g}</button>)}</div>
       {rows.length === 0 ? <Empty title={t('No customers yet.')} /> : (
         <div className="table-wrap"><table className="list">
           <thead><tr><th>{t('Name')}</th><th>{t('Phone')}</th><th className="num">{t('Credit limit')}</th><th className="num">{t('Balance owed')}</th><th /></tr></thead>
-          <tbody>{rows.map((c) => (
-            <tr key={c.id} tabIndex={0} className="clickable" onClick={() => setView(c)}><td>{c.name}</td><td className="mono">{c.phone}</td><td className="num">{c.credit_limit ? fmt(c.credit_limit, tenant, lang) : '—'}</td>
+          <tbody>{rows.filter((c) => (!tagF || c.tags?.includes(tagF)) && (!bdays || (c.birthday ?? '').slice(5, 7) === new Date().toISOString().slice(5, 7))).map((c) => (
+            <tr key={c.id} tabIndex={0} className="clickable" onClick={() => setView(c)}><td>{c.name}{c.tags?.map((g) => <span key={g} className="tag">#{g}</span>)}{c.birthday && c.birthday.slice(5, 7) === new Date().toISOString().slice(5, 7) && <span className="tag promo">🎂 {c.birthday.slice(8, 10)}/{c.birthday.slice(5, 7)}</span>}</td><td className="mono">{c.phone}</td><td className="num">{c.credit_limit ? fmt(c.credit_limit, tenant, lang) : '—'}</td>
               <td className={`num ${(bal[c.id] ?? 0) > 0 ? 'bad' : ''}`}>{bal[c.id] != null ? fmt(bal[c.id], tenant, lang) : '—'}</td>
               <td>{s.can('customers.manage') && <button className="ghost small" onClick={(e) => { e.stopPropagation(); setEdit(c) }}>{t('Edit')}</button>}</td></tr>))}</tbody>
         </table></div>
@@ -64,11 +68,13 @@ function CustomerForm({ c, onClose, onSaved }: { c: Partial<Customer>; onClose: 
   const { t } = useT()
   const s = useSession()
   const d = s.tenant!.currency_decimals
-  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', credit_limit: num(c.credit_limit ?? 0, d) })
+  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', credit_limit: num(c.credit_limit ?? 0, d),
+    birthday: c.birthday ?? '', tags: (c.tags ?? []).join(', '), preferences: c.preferences ?? '' })
   const [err, setErr] = useState<string | null>(null)
   async function save(e: React.FormEvent) {
     e.preventDefault()
     const row = { tenant_id: s.tenant!.id, name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, address: f.address.trim() || null,
+      birthday: f.birthday || null, tags: f.tags.split(',').map((x) => x.trim()).filter(Boolean), preferences: f.preferences.trim() || null,
       ...(s.can('customers.manage') ? { credit_limit: toMinor(f.credit_limit || '0', d) } : {}) }
     const r = c.id ? await supabase.from('customers').update(row).eq('id', c.id) : await supabase.from('customers').insert(row)
     if (r.error) setErr(r.error.message); else onSaved()
@@ -80,6 +86,9 @@ function CustomerForm({ c, onClose, onSaved }: { c: Partial<Customer>; onClose: 
         <label className="field"><span>{t('Phone')}</span><input id="c-phone" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="+965…" /></label>
         <label className="field"><span>{t('E-mail')}</span><input id="c-email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
         <label className="field"><span>{t('Delivery address')}</span><textarea id="c-address" rows={2} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
+        <label className="field"><span>{t('Birthday')}</span><input id="c-birthday" type="date" value={f.birthday} onChange={(e) => setF({ ...f, birthday: e.target.value })} /></label>
+        <label className="field"><span>{t('Tags (e.g. VIP, corporate)')}</span><input id="c-tags" value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} /></label>
+        <label className="field"><span>{t('Preferences (sizes, favourite items, allergies)')}</span><textarea id="c-pref" rows={2} value={f.preferences} onChange={(e) => setF({ ...f, preferences: e.target.value })} /></label>
         {s.can('customers.manage') && <label className="field"><span>{t('Credit limit (0 = no credit sales)')}</span><input id="c-limit" inputMode="decimal" value={f.credit_limit} onChange={(e) => setF({ ...f, credit_limit: e.target.value })} /></label>}
         {err && <p className="error">{err}</p>}
         <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary">{t('Save')}</button></div>
@@ -123,6 +132,8 @@ function CustomerCard({ c, onClose }: { c: Customer; onClose: () => void }) {
       {tab === 'overview' && <div className="stack">
         <p className="muted">{c.phone}{c.address ? ` · ${c.address}` : ''}</p>
         <CustomerTerms c={c} />
+        {c.preferences && <p className="amber-note">{c.preferences}</p>}
+        <ClientNotes customerId={c.id} />
         {points != null && <div className="kpi2"><span className="kpi2-label">{t('Loyalty points')}</span><b className="kpi2-value">{points}</b></div>}
         {pkgs.length > 0 && <>
           <h3 className="sub-h">{t('Packages and memberships')}</h3>
@@ -228,5 +239,33 @@ function CustomerTerms({ c }: { c: Customer }) {
       {(msg || approval.error) && <p className={approval.error ? 'error' : 'success'}>{approval.error ?? msg}</p>}
       {approval.dialog}
     </div>
+  )
+}
+
+/** Clienteling: notes and follow-ups on a customer, newest first, with who wrote them. */
+function ClientNotes({ customerId }: { customerId: string }) {
+  const { t } = useT()
+  const s = useSession()
+  const [rows, setRows] = useState<{ id: number; note: string; follow_up: string | null; created_at: string; created_by: string | null }[]>([])
+  const [people, setPeople] = useState<Record<string, string>>({})
+  const [f, setF] = useState({ note: '', follow_up: '' })
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('customer_notes').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(50); setRows(data ?? [])
+  }, [customerId])
+  useEffect(() => { void load(); void supabase.from('memberships').select('user_id, display_name').eq('tenant_id', s.tenant!.id).then(({ data }) => setPeople(Object.fromEntries((data ?? []).map((m) => [m.user_id, m.display_name])))) }, [load, s.tenant])
+  async function add() {
+    const { error } = await supabase.from('customer_notes').insert({ tenant_id: s.tenant!.id, customer_id: customerId, note: f.note.trim(), follow_up: f.follow_up || null })
+    if (!error) { setF({ note: '', follow_up: '' }); void load() }
+  }
+  return (
+    <section className="stack">
+      <h3 className="sub-h">{t('Notes and follow-ups')}</h3>
+      <form className="row wrap" onSubmit={(e) => { e.preventDefault(); void add() }}>
+        <input id="cn-note" aria-label={t('Note')} placeholder={t('e.g. Wants the blue one in size M when it arrives')} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+        <input id="cn-follow" type="date" aria-label={t('Follow up on')} value={f.follow_up} onChange={(e) => setF({ ...f, follow_up: e.target.value })} />
+        <button className="primary" disabled={!f.note.trim()}>{t('Add note')}</button></form>
+      {rows.length > 0 && <ul className="feed">{rows.map((r) => <li key={r.id}><span className="feed-ico" aria-hidden="true">✎</span>
+        <div><b>{r.note}</b><p className="muted small">{people[r.created_by ?? ''] ?? ''} · {r.created_at.slice(0, 10)}{r.follow_up ? ` · ${t('Follow up on')} ${r.follow_up}` : ''}</p></div></li>)}</ul>}
+    </section>
   )
 }

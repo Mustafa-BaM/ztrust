@@ -812,3 +812,20 @@ textarea { width: 100%; min-height: 44px; border: 1px solid var(--line); border-
 .a4-sign { display: flex; justify-content: space-between; margin-top: 40px }
 .a4-to { display: grid; gap: 2px }
 @media print { .payslip { break-after: page } .payslip:last-child { break-after: auto } }
+td.gross, th.gross { background: var(--accent-soft) } td.ded, th.ded { background: var(--bad-soft, var(--amber-soft)) }
+tr.totals td { border-top: 2px solid var(--line) }
+.badge.tier { background: var(--amber-soft); color: var(--amber-ink, var(--ink)); margin-inline-start: 4px }
+.course-tag { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted) }
+.kds li.held, li.held { opacity: .45 } li.held button { cursor: default }
+.public-receipt { max-width: 420px; margin-inline: auto }
+/* payroll: headers wrap, employee and the totals stay visible while the middle scrolls */
+table.payroll th { white-space: normal; line-height: 1.2; min-width: 64px; max-width: 96px; vertical-align: bottom }
+table.payroll td, table.payroll th { padding-inline: 6px }
+table.payroll .qty-in { width: 72px }
+table.payroll tr > :first-child { position: sticky; inset-inline-start: 0; background: var(--surface); z-index: 1 }
+table.payroll tr > :nth-last-child(-n+3) { position: sticky; background: var(--surface); z-index: 1 }
+table.payroll tr > :nth-last-child(3) { inset-inline-end: 124px; box-shadow: -6px 0 8px -8px rgba(0,0,0,.35) }
+table.payroll tr > :nth-last-child(2) { inset-inline-end: 34px }
+table.payroll tr > :last-child { inset-inline-end: 0; width: 34px }
+table.payroll td.ded, table.payroll th.ded { background: color-mix(in srgb, var(--bad) 10%, var(--surface)) }
+[dir=rtl] table.payroll tr > :nth-last-child(3) { box-shadow: 6px 0 8px -8px rgba(0,0,0,.35) }

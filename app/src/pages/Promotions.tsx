@@ -1,3 +1,4 @@
+import { LoyaltySetup } from './promotions/Loyalty'
 import { Plus, Tag, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Empty, Modal } from '../components/ui'
@@ -10,6 +11,8 @@ import type { Category, Item, Promotion } from '../lib/types'
 const KINDS: { id: Promotion['kind']; label: string; hint: string }[] = [
   { id: 'percent', label: '% off', hint: 'e.g. 20% off all abayas, 10% off coffee before 10 am' },
   { id: 'bxgy', label: 'Buy X get Y', hint: 'e.g. pens 3 for 2, second drink half price' },
+  { id: 'qty_tier', label: 'Quantity tiers', hint: 'e.g. 3+ pieces 10% off, 6+ pieces 20% off' },
+  { id: 'threshold', label: 'Spend thresholds', hint: 'e.g. spend 20 get 5% off, spend 50 get 15% off' },
   { id: 'bundle', label: 'Bundle at a fixed price', hint: 'e.g. school kit, meal deal (burger + fries + drink)' },
   { id: 'amount', label: 'Amount off the bill', hint: 'e.g. 5 off when the bill is 30 or more, with a coupon code' },
 ]
@@ -39,6 +42,8 @@ export default function Promotions() {
     const scope = p.item_ids?.length ? p.item_ids.map((id) => nameOf(items.find((i) => i.id === id))).join(', ') : p.category_ids?.length ? p.category_ids.map((id) => nameOf(cats.find((c) => c.id === id))).join(', ') : t('Everything')
     if (p.kind === 'percent') return `${p.params.percent}% · ${scope}`
     if (p.kind === 'bxgy') return `${t('Buy {b} get {g}', { b: p.params.buy ?? 1, g: p.params.get ?? 1 })}${p.params.percent !== 100 ? ` (${p.params.percent}%)` : ` ${t('free')}`} · ${scope}`
+    if (p.kind === 'qty_tier') return `${(p.params.tiers ?? []).map((x) => `${x.qty}+ → ${x.percent}%`).join(' · ')} · ${scope}`
+    if (p.kind === 'threshold') return (p.params.tiers ?? []).map((x) => `${num(x.min ?? 0, d)}+ → ${x.percent != null ? `${x.percent}%` : `−${num(x.amount ?? 0, d)}`}`).join(' · ')
     if (p.kind === 'bundle') return `${(p.params.components ?? []).map((c) => `${c.qty}× ${nameOf(items.find((i) => i.id === c.item_id))}`).join(' + ')} = ${num(p.params.price ?? 0, d)}`
     return `−${num(p.params.amount ?? 0, d)}${p.params.min_amount ? ` · ${t('bill from {v}', { v: num(p.params.min_amount, d) })}` : ''}`
   }
@@ -62,6 +67,7 @@ export default function Promotions() {
                 <button className="ghost small danger" aria-label={t('Delete')} onClick={() => void supabase.from('promotions').delete().eq('id', p.id).then(load)}><Trash2 size={14} /></button></div></td>
             </tr>))}</tbody>
         </table></div>)}
+      {s.can('catalog.manage') && <LoyaltySetup items={items} cats={cats} />}
       {edit && <PromoForm promo={edit} items={items} cats={cats} decimals={d} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load() }} />}
     </div>
   )
@@ -77,6 +83,8 @@ function PromoForm({ promo, items, cats, decimals, onClose, onSaved }: { promo: 
     percent: String(promo.params?.percent ?? (promo.kind === 'bxgy' ? 100 : 10)), amount: num(promo.params?.amount ?? 0, decimals), min_amount: num(promo.params?.min_amount ?? 0, decimals),
     buy: String(promo.params?.buy ?? 2), get: String(promo.params?.get ?? 1), price: num(promo.params?.price ?? 0, decimals),
     components: (promo.params?.components ?? []) as { item_id: string; qty: number }[],
+    tiers: (promo.params?.tiers ?? (promo.kind === 'threshold' ? [{ min: 10 ** decimals * 20, percent: 5 }] : [{ qty: 3, percent: 10 }]))
+      .map((x) => ({ at: x.qty != null ? String(x.qty) : num(x.min ?? 0, decimals), percent: x.percent != null ? String(x.percent) : '', amount: x.amount != null ? num(x.amount, decimals) : '' })),
     scope: promo.item_ids?.length ? 'items' : promo.category_ids?.length ? 'cats' : 'all', item_ids: promo.item_ids ?? [], category_ids: promo.category_ids ?? [],
     min_qty: String(promo.min_qty ?? 0), coupon_code: promo.coupon_code ?? '', starts_on: promo.starts_on ?? '', ends_on: promo.ends_on ?? '',
     weekdays: promo.weekdays ?? [], time_from: (promo.time_from ?? '').slice(0, 5), time_to: (promo.time_to ?? '').slice(0, 5),
@@ -86,7 +94,10 @@ function PromoForm({ promo, items, cats, decimals, onClose, onSaved }: { promo: 
   async function save(e: React.FormEvent) {
     e.preventDefault(); setErr(null)
     const params = f.kind === 'percent' ? { percent: Number(f.percent) } : f.kind === 'amount' ? { amount: toMinor(f.amount, decimals), min_amount: toMinor(f.min_amount || '0', decimals) }
-      : f.kind === 'bxgy' ? { buy: Number(f.buy), get: Number(f.get), percent: Number(f.percent) } : { price: toMinor(f.price, decimals), components: f.components }
+      : f.kind === 'bxgy' ? { buy: Number(f.buy), get: Number(f.get), percent: Number(f.percent) }
+      : f.kind === 'qty_tier' ? { tiers: f.tiers.filter((x) => x.at).map((x) => ({ qty: Number(x.at), percent: Number(x.percent || 0) })) }
+      : f.kind === 'threshold' ? { tiers: f.tiers.filter((x) => x.at).map((x) => (x.percent ? { min: toMinor(x.at, decimals), percent: Number(x.percent) } : { min: toMinor(x.at, decimals), amount: toMinor(x.amount || '0', decimals) })) }
+      : { price: toMinor(f.price, decimals), components: f.components }
     if (f.kind === 'bundle' && f.components.length < 2) return setErr(t('A bundle needs at least two items'))
     const row = { tenant_id: s.tenant!.id, name: f.name.trim(), name_ar: f.name_ar.trim() || null, kind: f.kind, params,
       item_ids: f.kind !== 'bundle' && f.scope === 'items' ? f.item_ids : null, category_ids: f.kind !== 'bundle' && f.scope === 'cats' ? f.category_ids : null,
@@ -110,6 +121,15 @@ function PromoForm({ promo, items, cats, decimals, onClose, onSaved }: { promo: 
           <label className="field"><span>{t('Get')}</span><input id="promo-get" type="number" min={1} value={f.get} onChange={(e) => setF({ ...f, get: e.target.value })} /></label>
           <label className="field"><span>{t('At % off (100 = free)')}</span><input id="promo-percent" type="number" min={1} max={100} value={f.percent} onChange={(e) => setF({ ...f, percent: e.target.value })} /></label>
         </>}
+        {(f.kind === 'qty_tier' || f.kind === 'threshold') && <div className="span2 stack">
+          {f.tiers.map((x, i) => <div key={i} className="row wrap">
+            <label className="field"><span>{f.kind === 'qty_tier' ? t('From quantity') : t('When the bill reaches')}</span><input id={`tier-at-${i}`} inputMode="decimal" value={x.at} onChange={(e) => setF({ ...f, tiers: f.tiers.map((y, j) => (j === i ? { ...y, at: e.target.value } : y)) })} /></label>
+            <label className="field"><span>{t('Percent off')}</span><input id={`tier-pct-${i}`} inputMode="decimal" value={x.percent} onChange={(e) => setF({ ...f, tiers: f.tiers.map((y, j) => (j === i ? { ...y, percent: e.target.value } : y)) })} /></label>
+            {f.kind === 'threshold' && <label className="field"><span>{t('or amount off')}</span><input id={`tier-amt-${i}`} inputMode="decimal" value={x.amount} onChange={(e) => setF({ ...f, tiers: f.tiers.map((y, j) => (j === i ? { ...y, amount: e.target.value } : y)) })} /></label>}
+            <button type="button" className="ghost small danger" aria-label={t('Remove')} onClick={() => setF({ ...f, tiers: f.tiers.filter((_, j) => j !== i) })}><Trash2 size={14} /></button></div>)}
+          <button type="button" className="ghost" onClick={() => setF({ ...f, tiers: [...f.tiers, { at: '', percent: '', amount: '' }] })}><Plus size={14} />{t('Add tier')}</button>
+          <p className="muted small">{t('The highest tier reached applies. Quantities and amounts count all the qualifying items together.')}</p>
+        </div>}
         {f.kind === 'amount' && <>
           <label className="field"><span>{t('Amount off')}</span><input id="promo-amount" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></label>
           <label className="field"><span>{t('When the bill reaches')}</span><input id="promo-min" inputMode="decimal" value={f.min_amount} onChange={(e) => setF({ ...f, min_amount: e.target.value })} /></label>

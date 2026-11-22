@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CustomerPicker } from '../components/CustomerPicker'
 import { methodsFor, PayDialog } from '../components/PayDialog'
 import { ModifierDialog, StaffPicker, TablesDialog, VariantPicker } from '../components/pos/Dialogs'
-import { DeliveryDialog, GiftCardDialog, IncomingOrders, type DeliveryInfo } from '../components/pos/Growth'
+import { DeliveryDialog, GiftCardDialog, IncomingOrders, type DeliveryInfo, type DeliveryZone } from '../components/pos/Growth'
 import { PrintReceipt, Receipt, type ReceiptData } from '../components/Receipt'
 import { ApprovalDialog, Modal, useApproval } from '../components/ui'
 import { useName, useT } from '../lib/i18n'
@@ -57,7 +57,7 @@ export default function Pos() {
   const [saleNote, setSaleNote] = useState('')
   const [noteSale, setNoteSale] = useState(false)
   const [cartDisc, setCartDisc] = useState(false)
-  const [done, setDone] = useState<null | { receipt: ReceiptData; links: { token: string; amount: number }[] }>(null)
+  const [done, setDone] = useState<null | { receipt: ReceiptData; links: { token: string; amount: number }[]; token?: string }>(null)
   const [printing, setPrinting] = useState<ReceiptData | null>(null)
   const [preApproval, setPreApproval] = useState<null | ((pin: string) => void)>(null)
   const [busy, setBusy] = useState(false)
@@ -77,6 +77,9 @@ export default function Pos() {
   const [serialFor, setSerialFor] = useState<Item | null>(null)
   const [priceList, setPriceList] = useState<{ pct: number; prices: Record<string, number> } | null>(null)
   const [cashBack, setCashBack] = useState(0)
+  const [zones, setZones] = useState<DeliveryZone[]>([])
+  const [tier, setTier] = useState<{ name: string; name_ar: string | null; earn_multiplier: number } | null>(null)
+  const [punches, setPunches] = useState<{ program_id: string; name: string; name_ar: string | null; punches: number; punches_needed: number; reward_item_id: string }[]>([])
   const [delivery, setDelivery] = useState<DeliveryInfo | null>(null)
   const [incoming, setIncoming] = useState<OnlineOrder[]>([])
   const approval = useApproval()
@@ -144,6 +147,33 @@ export default function Pos() {
       .then(([pl, pi]) => apply(pl.data?.is_active ? { pct: Number(pl.data.discount_pct), prices: Object.fromEntries(((pi.data ?? []) as { item_id: string; price: number }[]).map((x) => [x.item_id, Number(x.price)])) } : null))
     return () => { live = false }
   }, [customer?.price_list_id, online]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- delivery zones (own delivery)
+  useEffect(() => {
+    if (!s.has('own_delivery') || !online) return
+    void supabase.from('delivery_zones').select('id, name, name_ar, fee, min_order, eta_min, branch_id').eq('tenant_id', tenant.id).eq('is_active', true).order('name')
+      .then(({ data }) => setZones(((data ?? []) as (DeliveryZone & { branch_id: string | null })[]).filter((z) => !z.branch_id || z.branch_id === s.branch?.id)))
+  }, [tenant.id, online, s])
+  /** own delivery chosen or changed: the zone's fee is a line on the bill (VAT as any other line) */
+  const applyDelivery = (d2: DeliveryInfo | null) => {
+    setDelivery(d2)
+    setLines((cur) => {
+      const rest = cur.filter((l) => l.key !== 'delivery-fee')
+      return d2?.fee ? [...rest, { key: 'delivery-fee', item_id: null, name: `Delivery fee${d2.zone_name ? ` · ${d2.zone_name}` : ''}`, name_ar: 'رسوم التوصيل', qty: 1, unit_price: d2.fee, list_price: d2.fee, discount: 0, tax_rate: tenant.vat_rate }] : rest
+    })
+  }
+  // ---- the customer's loyalty tier and punch cards
+  useEffect(() => {
+    setTier(null); setPunches([])
+    if (!customer || !online) return
+    void rpc<{ id: string | null; name: string; name_ar: string | null; earn_multiplier: number }[]>('customer_tier', { p_customer: customer.id }).then((r) => setTier(r[0]?.id ? r[0] : null)).catch(() => setTier(null))
+    void rpc<typeof punches>('customer_punches', { p_customer: customer.id }).then(setPunches).catch(() => setPunches([]))
+  }, [customer, online]) // eslint-disable-line react-hooks/exhaustive-deps
+  const redeemPunch = (p: (typeof punches)[number]) => {
+    const it = items.find((i) => i.id === p.reward_item_id)
+    if (!it) return
+    setLines((cur) => [...cur, { key: uuid(), item_id: it.id, name: it.name, name_ar: it.name_ar, qty: 1, unit_price: it.price, list_price: it.price, discount: 0, tax_rate: it.tax_rate ?? tenant.vat_rate, punch_program_id: p.program_id }])
+  }
 
   // ---- the customer's packages and points
   useEffect(() => {
@@ -339,7 +369,7 @@ export default function Pos() {
       tenant_id: tenant.id, branch_id: s.branch!.id, shift_id: shiftId, client_id: uuid(), customer_id: customer?.id ?? null,
       device_created_at: new Date().toISOString(), approver_pin: pin ?? null, coupon, note: saleNote.trim() || null,
       lines: payLines.map((l) => ({ item_id: l.item_id, name: l.item_id ? null : l.name, qty: l.qty, unit_price: l.unit_price, discount: l.discount, note: l.note ?? null,
-        modifiers: (l.modifiers ?? []).map((m) => m.id), staff_id: l.staff_id ?? null, promo_discount: l.promo_discount ?? 0, customer_package_id: l.customer_package_id ?? null, gift_code: l.gift_code ?? null, serials: l.serials ?? undefined })),
+        modifiers: (l.modifiers ?? []).map((m) => m.id), staff_id: l.staff_id ?? null, promo_discount: l.promo_discount ?? 0, customer_package_id: l.customer_package_id ?? null, gift_code: l.gift_code ?? null, serials: l.serials ?? undefined, punch_program_id: l.punch_program_id ?? undefined })),
       kitchen: hasKitchen && !ctx?.open_order_id ? { order_type: tenders.some((x) => x.tender === 'platform') ? 'delivery' : orderType, table_no: orderType === 'dine_in' ? table : null, hub: hubConnected() } : null,
       payments: tenders.map((x) => ({ tender: x.tender, amount: x.amount, reference: x.reference ?? null, method: x.method ?? null })),
       channel_id: tenders.find((x) => x.tender === 'platform')?.channel_id ?? null,
@@ -347,7 +377,7 @@ export default function Pos() {
       appointment_id: ctx?.appointment_id ?? null, work_order_id: ctx?.work_order_id ?? null,
       open_order_id: ctx?.open_order_id ?? null, open_order_keys: ctx?.open_order_id ? payLines.map((l) => l.key) : undefined,
       online_order_id: ctx?.online_order_id ?? null, sales_doc_id: ctx?.sales_doc_id ?? null,
-      delivery: delivery ? { address: delivery.address, phone: delivery.phone, note: delivery.note, driver_id: delivery.driver_id } : undefined,
+      delivery: delivery ? { address: delivery.address, phone: delivery.phone, note: delivery.note, driver_id: delivery.driver_id, zone_id: delivery.zone_id ?? null } : undefined,
     }
   }
 
@@ -374,7 +404,7 @@ export default function Pos() {
       return stations.some((x) => x.id === c?.station_id) ? c!.station_id! : fallback.id
     }
     const groups = new Map<string, CartLine[]>()
-    for (const l of payLines) { const sid = routeOf(l.item_id); groups.set(sid, [...(groups.get(sid) ?? []), l]) }
+    for (const l of payLines) { if (l.key === 'delivery-fee') continue; const sid = routeOf(l.item_id); groups.set(sid, [...(groups.get(sid) ?? []), l]) }
     const tickets = [...groups.entries()].map(([station_id, gl]) => ({
       id: uuid(), station_id, sale_client_id: clientId, order_ref: ref, order_type: orderType, table_no: orderType === 'dine_in' ? table || null : null,
       customer_name: customer?.name ?? null, created_at: new Date().toISOString(),
@@ -393,7 +423,7 @@ export default function Pos() {
     }
     setBusy(true)
     const payload = buildPayload(tenders, pin)
-    const needsServer = Boolean(ctx?.exchange || ctx?.sales_doc_id || payLines.some((l) => l.serials?.length) || ctx?.appointment_id || ctx?.work_order_id || ctx?.open_order_id || ctx?.online_order_id || delivery || totals.packages || tenders.some((x) => ['loyalty', 'gift_card', 'cod'].includes(x.tender)) || payLines.some((l) => items.find((i) => i.id === l.item_id)?.item_type === 'gift_card'))
+    const needsServer = Boolean(payLines.some((l) => l.punch_program_id) || ctx?.exchange || ctx?.sales_doc_id || payLines.some((l) => l.serials?.length) || ctx?.appointment_id || ctx?.work_order_id || ctx?.open_order_id || ctx?.online_order_id || delivery || totals.packages || tenders.some((x) => ['loyalty', 'gift_card', 'cod'].includes(x.tender)) || payLines.some((l) => items.find((i) => i.id === l.item_id)?.item_type === 'gift_card'))
     const offlineSale = async () => {
       if (tenders.some((x) => x.tender === 'payment_link')) { approval.setError(t('Payment links need internet.')); return }
       if (needsServer) { approval.setError(t('This checkout needs internet (package, deposit, points or table).')); return }
@@ -424,7 +454,7 @@ export default function Pos() {
       if (networkDown) { await offlineSale(); return }
       if (sale) {
         sendToHub(String(payload.client_id), sale.number)
-        setDone({ receipt: { ...receiptFromCart(tenders, change, sale.number, false), created_at: sale.created_at, subtotal: sale.subtotal, tax_total: sale.tax_total, total: sale.total }, links: sale.links ?? [] })
+        setDone({ receipt: { ...receiptFromCart(tenders, change, sale.number, false), created_at: sale.created_at, subtotal: sale.subtotal, tax_total: sale.tax_total, total: sale.total }, links: sale.links ?? [], token: (sale as Sale & { public_token?: string }).public_token })
         afterSale()
       } else if (!navigator.onLine) {
         await offlineSale()
@@ -528,7 +558,7 @@ export default function Pos() {
             <button className="icon" aria-label={t('Clear')} onClick={clear}><X size={14} /></button></div>)}
         <header className="cart-head">
           <button className="ghost" onClick={() => setDialog('customer')}><UserRound size={16} aria-hidden="true" />{customer ? customer.name : t('Walk-in customer')} <kbd>F3</kbd>
-            {points != null && <em className="badge pts">{t('{n} pts', { n: points })}</em>}</button>
+            {points != null && <em className="badge pts">{t('{n} pts', { n: points })}</em>}{tier && <em className="badge tier">{lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}{Number(tier.earn_multiplier) !== 1 ? ` ×${Number(tier.earn_multiplier)}` : ''}</em>}</button>
           {!isTable && <button className="ghost" disabled={!lines.length} onClick={park} title={t('Park this sale and start a new one')}><PauseCircle size={16} aria-hidden="true" />{t('Park')} <kbd>F9</kbd></button>}
         </header>
         {!isTable && held.length > 0 && (
@@ -539,6 +569,10 @@ export default function Pos() {
                 <b>{num(calcCart(h.lines, tenant.prices_include_tax).total, d)}</b></button>))}
             <button className="chipbtn ghost" onClick={() => setDialog('held')}>{t('All')}</button>
           </div>)}
+        {punches.length > 0 && <div className="park-chips" aria-label={t('Punch cards')}>{punches.map((p) => {
+          const ready = Number(p.punches) >= p.punches_needed && !lines.some((l) => l.punch_program_id === p.program_id)
+          return <button key={p.program_id} className={`chipbtn ${ready ? 'on' : ''}`} disabled={!ready} onClick={() => redeemPunch(p)} title={t('Punch cards')}>
+            {lang === 'ar' && p.name_ar ? p.name_ar : p.name} · {Math.min(Number(p.punches), p.punches_needed)}/{p.punches_needed}{ready ? ` · ${t('Redeem')}` : ''}</button> })}</div>}
         {saleNote && <button className="sale-note" onClick={() => setNoteSale(true)}><StickyNote size={14} aria-hidden="true" />{saleNote}</button>}
         <div className="paper">
           <div className="paper-head"><span>{isTable ? ctx?.label : t('Ticket')}</span><span>{Number(lines.reduce((a, l) => a + l.qty, 0).toFixed(3))} {t('items')}</span></div>
@@ -660,7 +694,7 @@ export default function Pos() {
       {giftFor && <GiftCardDialog item={giftFor} decimals={d} onClose={() => setGiftFor(null)}
         onAdd={(amount, code) => { const it = giftFor; setGiftFor(null); setLines((cur) => [...cur, { key: uuid(), item_id: it.id, name: it.name, name_ar: it.name_ar, qty: 1, unit_price: amount, list_price: amount, discount: 0, tax_rate: 0, gift_code: code || undefined }]); setSel(lines.length) }} />}
       {dialog === 'delivery' && <DeliveryDialog customer={customer} drivers={(catalog?.staff ?? []).filter((m) => (m as { is_driver?: boolean }).is_driver)} initial={delivery}
-        onPickCustomer={() => setDialog('customer')} onClose={() => setDialog(null)} onSave={(d2) => { setDelivery(d2); setDialog(null) }} />}
+        onPickCustomer={() => setDialog('customer')} onClose={() => setDialog(null)} onSave={(d2) => { applyDelivery(d2); setDialog(null) }} zones={zones} decimals={d} />}
       {dialog === 'incoming' && <IncomingOrders orders={incoming} tenant={tenant} onClose={() => setDialog(null)} onChanged={() => void loadIncoming()} onPay={payKiosk} />}
       {dialog === 'tables' && <TablesDialog branchId={s.branch.id} tenant={tenant} onClose={() => setDialog(null)} onOpen={openTable} />}
       {dialog === 'held' && (
@@ -702,6 +736,7 @@ export default function Pos() {
                 </div>
               )
             })}
+            {done.token && <ReceiptShare token={done.token} phone={done.receipt.customer?.phone ?? ''} />}
             <div className="receipt-preview"><Receipt data={done.receipt} tenant={tenant} branch={s.branch} /></div>
             <PrintButtons onPrint={(paper) => setPrinting({ ...done.receipt, paper })} />
             <div className="row end"><button className="primary" autoFocus onClick={() => setDone(null)}>{t('New sale')}</button></div>
@@ -813,5 +848,19 @@ function SerialDialog({ item, branchId, taken, onPick, onClose }: { item: Item; 
         <div className="row end"><button type="button" className="ghost" onClick={onClose}>{t('Cancel')}</button><button className="primary" disabled={!ok}>{t('Add')}</button></div>
       </form>
     </Modal>
+  )
+}
+
+/** Digital receipt: a link (and QR) the customer opens on their phone — no paper needed. */
+export function ReceiptShare({ token, phone }: { token: string; phone: string }) {
+  const { t } = useT()
+  const s = useSession()
+  const url = `${publicAppUrl}/r/${token}`
+  const text = encodeURIComponent(`${s.tenant!.name}: ${t('Your receipt')} ${url}`)
+  return (
+    <div className="linkbox"><span className="muted small">{t('Digital receipt')}</span><code>{url}</code>
+      <div className="row"><button onClick={() => { navigator.clipboard?.writeText(url).catch(() => undefined) }}>{t('Copy link')}</button>
+        <a className="button" href={`https://wa.me/${phone.replace(/\D/g, '')}?text=${text}`} target="_blank" rel="noreferrer">{t('Send by WhatsApp')}</a>
+        <a className="button" href={`mailto:?subject=${encodeURIComponent(s.tenant!.name)}&body=${text}`}>{t('Email')}</a></div></div>
   )
 }

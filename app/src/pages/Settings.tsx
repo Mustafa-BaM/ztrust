@@ -14,6 +14,7 @@ import Modules from './settings/Modules'
 import Integrations from './settings/Integrations'
 import { ModuleSettings, StaffExtras, TablesSetup } from './settings/ModuleSettings'
 import { RulesSettings } from './settings/Rules'
+import { ZonesAndChecklists } from './settings/Zones'
 import { RECEIPT_FONTS } from '../components/Receipt'
 
 const MODULES: Record<string, string> = {
@@ -491,6 +492,7 @@ function Business() {
       </div>
       <ModuleSettings />
       {(s.role === 'owner' || s.can('settings.manage')) && <RulesSettings />}
+      {(s.role === 'owner' || s.can('settings.manage')) && <ZonesAndChecklists />}
     </section>
   )
 }
